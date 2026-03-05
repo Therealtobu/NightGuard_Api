@@ -9,6 +9,7 @@ import os
 import argparse
 import random
 import time
+import logging
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -29,6 +30,13 @@ from vm.vm_generator import generate_vm
 
 # VM cache (tránh generate lại mỗi request)
 _VM_CACHE = {}
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[NightGuard] %(message)s"
+)
+
+logger = logging.getLogger("nightguard")
 
 
 BANNER = r"""
@@ -67,35 +75,42 @@ def get_vm_runtime(opcodes):
     return _VM_CACHE[key]
 
 
-def obfuscate(source: str, seed=None, options=None, verbose=False):
+def obfuscate(source: str, seed=None, options=None, verbose=False, api_mode=False):
 
     if seed is None:
-        seed = int(time.time() * 1000) & 0xFFFFFFFF
+        seed = int(time.time() * 1000) ^ random.getrandbits(32)
 
     opts = options or {}
     rng = random.Random(seed)
 
     def log(msg):
         if verbose:
-            print(f"[NightGuard] {msg}")
+            logger.info(msg)
 
     # PARSE
     log("Parsing source...")
-    ast = parse(source)
+
+    try:
+        ast = parse(source)
+    except Exception as e:
+        raise RuntimeError(f"Parse error: {e}")
 
     # TRANSFORM
     log("Running transform pipeline...")
+
     pipeline = TransformPipeline(rng, opts)
     ast2 = pipeline.run(ast)
 
     log(f"Strings encrypted: {len(pipeline.string_table)}")
 
-    # OPCODE TABLE
+    # OPCODES
     log("Generating opcode table...")
-    opcodes = Opcodes(seed=rng.randint(0, 2**31))
+
+    opcodes = Opcodes(seed=rng.getrandbits(32))
 
     # COMPILE
     log("Compiling bytecode...")
+
     compiler = Compiler(opcodes, rng, pipeline.string_table)
 
     proto = compiler.compile(ast2)
@@ -108,16 +123,19 @@ def obfuscate(source: str, seed=None, options=None, verbose=False):
 
     # SERIALIZE
     log("Serializing bytecode...")
+
     raw = serialize_proto(proto)
 
     # ENCRYPT
     log("Encrypting bytecode...")
+
     enc, key32, enc_seed = encrypt_bytecode(raw, rng)
 
     log(f"{len(raw)}B → {len(enc)}B encrypted")
 
     # VM runtime
     log("Generating VM runtime...")
+
     vm_src = get_vm_runtime(opcodes)
 
     # Encode for Lua
