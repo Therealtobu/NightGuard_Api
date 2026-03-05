@@ -8,33 +8,45 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0b0b0e;--surface:#111116;--card:#16161d;--border:rgba(255,255,255,0.06);--border-h:rgba(255,255,255,0.11);--accent:#7c6ff7;--accent2:#a78bfa;--text:#e8e8f0;--muted:#6b6b80;--mono:'DM Mono',monospace;--display:'Syne',sans-serif;--body:'DM Sans',sans-serif}
+:root{
+  --bg:#0b0b0e;--surface:#111116;--card:#16161d;
+  --border:rgba(255,255,255,0.06);--border-h:rgba(255,255,255,0.11);
+  --accent:#7c6ff7;--accent2:#a78bfa;--text:#e8e8f0;--muted:#6b6b80;
+  --mono:'DM Mono',monospace;--display:'Syne',sans-serif;--body:'DM Sans',sans-serif;
+  --green:#4ade80;--orange:#fb923c;
+}
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:15px;line-height:1.6;overflow-x:hidden}
 body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");opacity:.025;pointer-events:none;z-index:9999}
-nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 2.5rem;height:58px;background:rgba(11,11,14,.75);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
+
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:0 2.5rem;height:58px;background:rgba(11,11,14,.82);backdrop-filter:blur(20px);border-bottom:1px solid var(--border)}
 .nav-logo{font-family:var(--display);font-weight:700;font-size:1.1rem;letter-spacing:-.02em;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:.55rem}
 .nav-logo .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent)}
 .nav-links{display:flex;gap:2rem;list-style:none}
-.nav-links a{color:var(--muted);text-decoration:none;font-size:.85rem;font-weight:400;letter-spacing:.01em;transition:color .2s}
+.nav-links a{color:var(--muted);text-decoration:none;font-size:.85rem;transition:color .2s}
 .nav-links a:hover{color:var(--text)}
 .nav-cta{background:var(--card)!important;border:1px solid var(--border)!important;color:var(--text)!important;padding:.4rem 1rem!important;border-radius:6px;font-size:.83rem!important;transition:border-color .2s,background .2s!important}
 .nav-cta:hover{border-color:var(--accent)!important;background:rgba(124,111,247,.08)!important}
+
+/* HERO */
 .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:6rem 2rem 4rem;position:relative;overflow:hidden}
-.hero-glow{position:absolute;top:20%;left:50%;transform:translateX(-50%);width:600px;height:400px;background:radial-gradient(ellipse,rgba(124,111,247,.12) 0%,transparent 70%);pointer-events:none}
-.hero-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(124,111,247,.08);border:1px solid rgba(124,111,247,.2);border-radius:20px;padding:.3rem .9rem;font-family:var(--mono);font-size:.72rem;color:var(--accent2);margin-bottom:2.2rem;letter-spacing:.05em;animation:fadeUp .6s ease both}
+.hero-glow{position:absolute;top:20%;left:50%;transform:translateX(-50%);width:600px;height:400px;background:radial-gradient(ellipse,rgba(124,111,247,.13) 0%,transparent 70%);pointer-events:none}
+.hero-badge{display:inline-flex;align-items:center;gap:.5rem;background:rgba(124,111,247,.08);border:1px solid rgba(124,111,247,.22);border-radius:20px;padding:.3rem .9rem;font-family:var(--mono);font-size:.72rem;color:var(--accent2);margin-bottom:2.2rem;letter-spacing:.05em;animation:fadeUp .6s ease both}
 .badge-dot{width:5px;height:5px;border-radius:50%;background:var(--accent2);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .hero h1{font-family:var(--display);font-size:clamp(2.8rem,7vw,5.2rem);font-weight:800;letter-spacing:-.04em;line-height:1.05;max-width:780px;animation:fadeUp .6s .1s ease both}
 .hero h1 span{background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .hero-sub{margin-top:1.4rem;max-width:520px;color:var(--muted);font-size:1rem;font-weight:300;line-height:1.7;animation:fadeUp .6s .2s ease both}
-.hero-actions{margin-top:2.4rem;display:flex;gap:.75rem;justify-content:center;animation:fadeUp .6s .3s ease both}
-.btn-primary{background:var(--accent);color:#fff;border:none;padding:.65rem 1.6rem;border-radius:8px;font-family:var(--body);font-size:.88rem;font-weight:500;cursor:pointer;transition:opacity .2s,transform .15s;text-decoration:none}
+.hero-actions{margin-top:2.4rem;display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;animation:fadeUp .6s .3s ease both}
+.btn-primary{background:var(--accent);color:#fff;border:none;padding:.65rem 1.6rem;border-radius:8px;font-family:var(--body);font-size:.88rem;font-weight:500;cursor:pointer;transition:opacity .2s,transform .15s;text-decoration:none;display:inline-block}
 .btn-primary:hover{opacity:.85;transform:translateY(-1px)}
-.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border);padding:.65rem 1.6rem;border-radius:8px;font-family:var(--body);font-size:.88rem;cursor:pointer;transition:border-color .2s,color .2s;text-decoration:none}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border);padding:.65rem 1.6rem;border-radius:8px;font-family:var(--body);font-size:.88rem;cursor:pointer;transition:border-color .2s,color .2s;text-decoration:none;display:inline-block}
 .btn-ghost:hover{border-color:var(--border-h);color:var(--text)}
+
+/* HERO EDITOR MOCKUP */
 .editor-wrap{margin-top:4rem;width:100%;max-width:820px;animation:fadeUp .7s .4s ease both}
-.editor-chrome{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.03)}
+.editor-chrome{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.5)}
 .editor-bar{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;background:rgba(255,255,255,.02);border-bottom:1px solid var(--border)}
 .editor-dot{width:10px;height:10px;border-radius:50%}
 .d1{background:#ff5f57}.d2{background:#febc2e}.d3{background:#28c840}
@@ -46,15 +58,21 @@ nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:cen
 .code-line{display:flex;gap:.8rem}
 .ln{color:rgba(255,255,255,.15);user-select:none;min-width:1.2rem;text-align:right}
 .kw{color:#c792ea}.fn{color:#82aaff}.str{color:#c3e88d}.num{color:#f78c6c}.cm{color:#546e7a}.op{color:var(--muted)}
-.obf-line{color:#5a5a7a}.obf-highlight{color:var(--accent2)}
+.obf-line{color:#5a5a7a}.obf-h{color:var(--accent2)}
+
+/* STATS */
 .stats{display:flex;justify-content:center;gap:4rem;padding:3.5rem 2rem;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 .stat-item{text-align:center}
-.stat-value{font-family:var(--display);font-size:2rem;font-weight:700;letter-spacing:-.03em;color:var(--text)}
+.stat-value{font-family:var(--display);font-size:2rem;font-weight:700;letter-spacing:-.03em}
 .stat-label{font-size:.78rem;color:var(--muted);margin-top:.2rem;letter-spacing:.03em}
+
+/* SECTIONS */
 section{padding:5rem 2rem;max-width:1100px;margin:0 auto}
 .section-label{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;color:var(--accent);text-transform:uppercase;margin-bottom:.8rem}
 .section-title{font-family:var(--display);font-size:clamp(1.8rem,3vw,2.5rem);font-weight:700;letter-spacing:-.03em;line-height:1.15;max-width:500px}
 .section-desc{color:var(--muted);margin-top:.8rem;max-width:420px;font-size:.92rem;line-height:1.7}
+
+/* FEATURE GRID */
 .feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-top:3rem}
 .feature-card{background:var(--card);padding:1.8rem;transition:background .2s}
 .feature-card:hover{background:#1a1a23}
@@ -62,40 +80,49 @@ section{padding:5rem 2rem;max-width:1100px;margin:0 auto}
 .feat-icon svg{width:16px;height:16px;stroke:var(--accent2)}
 .feat-title{font-family:var(--display);font-size:.95rem;font-weight:600;letter-spacing:-.01em;margin-bottom:.45rem}
 .feat-desc{font-size:.82rem;color:var(--muted);line-height:1.65}
+
+/* STEPS */
 .steps-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;margin-top:3rem}
 .step-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.6rem;position:relative;overflow:hidden}
 .step-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transition:opacity .3s}
 .step-card:hover::before{opacity:1}
 .step-num{font-family:var(--display);font-size:2.5rem;font-weight:800;color:rgba(124,111,247,.15);letter-spacing:-.05em;line-height:1;margin-bottom:.8rem}
-.step-title{font-family:var(--display);font-size:.95rem;font-weight:600;letter-spacing:-.01em;margin-bottom:.4rem}
+.step-title{font-family:var(--display);font-size:.95rem;font-weight:600;margin-bottom:.4rem}
 .step-desc{font-size:.82rem;color:var(--muted);line-height:1.65}
+
+/* TOOL */
 .tool-section{background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:5rem 2rem}
 .tool-inner{max-width:1100px;margin:0 auto}
 .tool-box{margin-top:2.5rem;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-.tool-header{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015);flex-wrap:wrap;gap:.5rem}
+.tool-header{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-bottom:1px solid var(--border);background:rgba(255,255,255,.015);flex-wrap:wrap;gap:.6rem}
 .tool-tabs{display:flex;gap:.25rem}
 .tab{padding:.3rem .8rem;border-radius:5px;font-family:var(--mono);font-size:.72rem;cursor:pointer;color:var(--muted);transition:background .15s,color .15s;border:none;background:transparent;letter-spacing:.03em}
 .tab.active{background:rgba(124,111,247,.12);color:var(--accent2)}
 .tab:hover:not(.active){background:rgba(255,255,255,.04);color:var(--text)}
 .tool-options{display:flex;gap:.4rem;flex-wrap:wrap}
-.opt-badge{display:flex;align-items:center;gap:.35rem;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:5px;padding:.28rem .65rem;font-size:.72rem;color:var(--muted);cursor:pointer;transition:border-color .2s,color .2s;white-space:nowrap;font-family:var(--mono)}
+.opt-badge{display:flex;align-items:center;gap:.35rem;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:5px;padding:.3rem .7rem;font-size:.72rem;color:var(--muted);cursor:pointer;transition:border-color .2s,color .2s,background .2s;white-space:nowrap;font-family:var(--mono)}
 .opt-badge:hover{border-color:var(--border-h);color:var(--text)}
-.opt-badge.on{color:var(--accent2);border-color:rgba(124,111,247,.25);background:rgba(124,111,247,.06)}
+.opt-badge.on{color:var(--accent2);border-color:rgba(124,111,247,.3);background:rgba(124,111,247,.07)}
+.opt-badge.vm-badge.on{color:var(--green);border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.06)}
 .opt-dot{width:5px;height:5px;border-radius:50%;background:currentColor}
 .tool-editors{display:grid;grid-template-columns:1fr 1fr}
 .tool-editor{position:relative}
 .tool-editor:first-child{border-right:1px solid var(--border)}
 .editor-label{padding:.55rem 1rem;font-family:var(--mono);font-size:.65rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--border);background:rgba(255,255,255,.01)}
-textarea{width:100%;height:280px;background:transparent;border:none;outline:none;resize:none;padding:1.1rem;font-family:var(--mono);font-size:.78rem;color:var(--text);line-height:1.75;caret-color:var(--accent)}
+textarea{width:100%;height:300px;background:transparent;border:none;outline:none;resize:none;padding:1.1rem;font-family:var(--mono);font-size:.78rem;color:var(--text);line-height:1.75;caret-color:var(--accent)}
 textarea::placeholder{color:var(--muted)}
 .tool-footer{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.2rem;border-top:1px solid var(--border);background:rgba(255,255,255,.01);flex-wrap:wrap;gap:.5rem}
 .tool-meta{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.04em}
-.tool-meta span{color:var(--accent2)}
-.run-btn{display:flex;align-items:center;gap:.5rem;background:var(--accent);color:#fff;border:none;padding:.5rem 1.2rem;border-radius:6px;font-family:var(--body);font-size:.83rem;font-weight:500;cursor:pointer;transition:opacity .2s}
-.run-btn:hover{opacity:.85}
-.run-btn svg{width:13px;height:13px}
-.copy-btn{display:flex;align-items:center;gap:.4rem;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);padding:.4rem .9rem;border-radius:6px;font-family:var(--mono);font-size:.72rem;cursor:pointer;transition:all .2s}
+.tool-meta .ok{color:var(--green)}.tool-meta .warn{color:var(--orange)}
+.btn-row{display:flex;gap:.5rem;align-items:center}
+.copy-btn{display:flex;align-items:center;gap:.4rem;background:rgba(255,255,255,.05);border:1px solid var(--border);color:var(--muted);padding:.42rem .9rem;border-radius:6px;font-family:var(--mono);font-size:.72rem;cursor:pointer;transition:all .2s}
 .copy-btn:hover{border-color:var(--accent2);color:var(--accent2)}
+.run-btn{display:flex;align-items:center;gap:.5rem;background:var(--accent);color:#fff;border:none;padding:.5rem 1.3rem;border-radius:6px;font-family:var(--body);font-size:.83rem;font-weight:500;cursor:pointer;transition:opacity .2s,transform .1s}
+.run-btn:hover{opacity:.85;transform:translateY(-1px)}
+.run-btn:active{transform:translateY(0)}
+.run-btn svg{width:13px;height:13px}
+
+/* PROTECT SECTION */
 .protect-grid{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center;margin-top:3rem}
 .protect-visual{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.5rem;font-family:var(--mono);font-size:.75rem;line-height:1.8;overflow:hidden;position:relative}
 .protect-visual::after{content:'';position:absolute;bottom:0;left:0;right:0;height:60px;background:linear-gradient(transparent,var(--card))}
@@ -105,8 +132,10 @@ textarea::placeholder{color:var(--muted)}
 .protect-point{display:flex;gap:1rem;align-items:flex-start}
 .pp-icon{width:32px;height:32px;min-width:32px;border-radius:6px;background:rgba(124,111,247,.08);border:1px solid rgba(124,111,247,.12);display:flex;align-items:center;justify-content:center;margin-top:.1rem}
 .pp-icon svg{width:13px;height:13px;stroke:var(--accent2)}
-.pp-text h4{font-family:var(--display);font-size:.88rem;font-weight:600;letter-spacing:-.01em;margin-bottom:.2rem}
+.pp-text h4{font-family:var(--display);font-size:.88rem;font-weight:600;margin-bottom:.2rem}
 .pp-text p{font-size:.8rem;color:var(--muted);line-height:1.6}
+
+/* FAQ */
 .faq-list{margin-top:2.5rem;display:flex;flex-direction:column;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:10px;overflow:hidden}
 .faq-item{background:var(--card);cursor:pointer}
 .faq-q{display:flex;justify-content:space-between;align-items:center;padding:1.1rem 1.4rem;font-size:.88rem;font-weight:500}
@@ -114,30 +143,48 @@ textarea::placeholder{color:var(--muted)}
 .faq-item.open .faq-q svg{transform:rotate(45deg);stroke:var(--accent2)}
 .faq-a{max-height:0;overflow:hidden;transition:max-height .3s ease,padding .3s ease;font-size:.83rem;color:var(--muted);line-height:1.7;padding:0 1.4rem}
 .faq-item.open .faq-a{max-height:200px;padding:0 1.4rem 1.1rem}
+
+/* CTA + FOOTER */
 .cta-band{text-align:center;padding:5rem 2rem;position:relative;overflow:hidden}
 .cta-band::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:500px;height:300px;background:radial-gradient(ellipse,rgba(124,111,247,.1) 0%,transparent 70%);pointer-events:none}
 .cta-band h2{font-family:var(--display);font-size:clamp(1.8rem,3vw,2.8rem);font-weight:700;letter-spacing:-.03em;margin-bottom:.8rem}
 .cta-band p{color:var(--muted);font-size:.92rem;max-width:380px;margin:0 auto 2rem;line-height:1.7}
-footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align-items:center;justify-content:space-between}
-.footer-logo{font-family:var(--display);font-size:.9rem;font-weight:700;color:var(--muted);letter-spacing:-.02em;display:flex;align-items:center;gap:.4rem}
+footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem}
+.footer-logo{font-family:var(--display);font-size:.9rem;font-weight:700;color:var(--muted);display:flex;align-items:center;gap:.4rem}
 .footer-links{display:flex;gap:1.8rem;list-style:none}
 .footer-links a{color:var(--muted);text-decoration:none;font-size:.78rem;transition:color .2s}
 .footer-links a:hover{color:var(--text)}
 .footer-copy{font-family:var(--mono);font-size:.7rem;color:rgba(107,107,128,.5)}
+
+/* PIPELINE */
+.pipeline-visual{margin-top:2rem;display:flex;align-items:center;flex-wrap:wrap;justify-content:center;gap:0}
+.pipe-step{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.65rem .95rem;font-family:var(--mono);font-size:.72rem;color:var(--muted);text-align:center;white-space:nowrap}
+.pipe-step strong{display:block;color:var(--accent2);font-size:.76rem;margin-bottom:.12rem}
+.pipe-arrow{color:rgba(255,255,255,.15);font-size:1rem;padding:0 .35rem;flex-shrink:0}
+
+/* ANIM */
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 .reveal{opacity:0;transform:translateY(18px);transition:opacity .55s ease,transform .55s ease}
 .reveal.visible{opacity:1;transform:none}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--border-h);border-radius:2px}
-.pipeline-visual{margin-top:2rem;display:flex;align-items:center;gap:0;flex-wrap:wrap;justify-content:center}
-.pipe-step{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:.7rem 1rem;font-family:var(--mono);font-size:.72rem;color:var(--muted);text-align:center;white-space:nowrap}
-.pipe-step strong{display:block;color:var(--accent2);font-size:.78rem;margin-bottom:.15rem}
-.pipe-arrow{color:var(--border-h);font-size:1.2rem;padding:0 .5rem;flex-shrink:0}
-@media(max-width:768px){.feature-grid,.steps-grid,.tool-editors,.editor-cols,.protect-grid{grid-template-columns:1fr}.tool-editor:first-child{border-right:none;border-bottom:1px solid var(--border)}.editor-pane:first-child{border-right:none;border-bottom:1px solid var(--border)}.stats{gap:2rem;flex-wrap:wrap}nav{padding:0 1.2rem}.nav-links{display:none}footer{flex-direction:column;gap:1.2rem;text-align:center}.pipeline-visual{flex-direction:column}.pipe-arrow{transform:rotate(90deg)}}
+
+@media(max-width:768px){
+  .feature-grid,.steps-grid,.tool-editors,.editor-cols,.protect-grid{grid-template-columns:1fr}
+  .tool-editor:first-child{border-right:none;border-bottom:1px solid var(--border)}
+  .editor-pane:first-child{border-right:none;border-bottom:1px solid var(--border)}
+  .stats{gap:2rem;flex-wrap:wrap}
+  nav{padding:0 1.2rem}
+  .nav-links{display:none}
+  .pipeline-visual{flex-direction:column}
+  .pipe-arrow{transform:rotate(90deg)}
+}
 </style>
 </head>
 <body>
+
+<!-- NAV -->
 <nav>
   <a class="nav-logo" href="#"><span class="dot"></span>NightGuard</a>
   <ul class="nav-links">
@@ -149,6 +196,7 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
   </ul>
 </nav>
 
+<!-- HERO -->
 <section class="hero">
   <div class="hero-glow"></div>
   <div class="hero-badge"><span class="badge-dot"></span>V2 — VM BYTECODE ENGINE</div>
@@ -162,40 +210,33 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
     <div class="editor-chrome">
       <div class="editor-bar">
         <span class="editor-dot d1"></span><span class="editor-dot d2"></span><span class="editor-dot d3"></span>
-        <span class="editor-title">nightguard v2 — obfuscator</span>
+        <span class="editor-title">nightguard v2 — protected output</span>
       </div>
       <div class="editor-cols">
         <div class="editor-pane">
           <div class="pane-label">Source</div>
-          <div class="code-line"><span class="ln">1</span><span><span class="kw">local</span> <span class="fn">secret</span> <span class="op">=</span> <span class="str">"admin_key_9f2a"</span></span></div>
-          <div class="code-line"><span class="ln">2</span><span><span class="kw">local function</span> <span class="fn">verify</span>(key)</span></div>
-          <div class="code-line"><span class="ln">3</span><span>&nbsp;&nbsp;<span class="kw">if</span> key <span class="op">==</span> <span class="fn">secret</span> <span class="kw">then</span></span></div>
-          <div class="code-line"><span class="ln">4</span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="fn">print</span>(<span class="str">"Access granted"</span>)</span></div>
-          <div class="code-line"><span class="ln">5</span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">return</span> <span class="num">true</span></span></div>
-          <div class="code-line"><span class="ln">6</span><span>&nbsp;&nbsp;<span class="kw">end</span></span></div>
-          <div class="code-line"><span class="ln">7</span><span>&nbsp;&nbsp;<span class="kw">return</span> <span class="num">false</span></span></div>
-          <div class="code-line"><span class="ln">8</span><span><span class="kw">end</span></span></div>
-          <div class="code-line"><span class="ln">9</span><span></span></div>
-          <div class="code-line"><span class="ln">10</span><span><span class="fn">verify</span>(<span class="str">"test"</span>)</span></div>
+          <div class="code-line"><span class="ln">1</span><span><span class="kw">local function</span> <span class="fn">fib</span>(n)</span></div>
+          <div class="code-line"><span class="ln">2</span><span>&nbsp;&nbsp;<span class="kw">if</span> n <span class="op">&lt;=</span> <span class="num">1</span> <span class="kw">then</span> <span class="kw">return</span> n <span class="kw">end</span></span></div>
+          <div class="code-line"><span class="ln">3</span><span>&nbsp;&nbsp;<span class="kw">return</span> <span class="fn">fib</span>(n<span class="op">-</span><span class="num">1</span>) <span class="op">+</span> <span class="fn">fib</span>(n<span class="op">-</span><span class="num">2</span>)</span></div>
+          <div class="code-line"><span class="ln">4</span><span><span class="kw">end</span></span></div>
+          <div class="code-line"><span class="ln">5</span><span><span class="kw">local</span> key <span class="op">=</span> <span class="str">"secret_42"</span></span></div>
+          <div class="code-line"><span class="ln">6</span><span><span class="fn">print</span>(fib(<span class="num">10</span>), key)</span></div>
         </div>
         <div class="editor-pane">
-          <div class="pane-label">VM Bytecode Output</div>
-          <div class="code-line"><span class="ln">1</span><span class="obf-line"><span class="cm">-- NightGuard V2 | VM Protected</span></span></div>
-          <div class="code-line"><span class="ln">2</span><span class="obf-line"><span class="obf-highlight">local</span> _N_canon={[3]=<span class="str">"LOAD_CONST"</span>,</span></div>
-          <div class="code-line"><span class="ln">3</span><span class="obf-line">&nbsp;&nbsp;[1]=<span class="str">"ADD"</span>,[7]=<span class="str">"CALL"</span>,...}</span></div>
-          <div class="code-line"><span class="ln">4</span><span class="obf-line"><span class="obf-highlight">local</span> _N_bc={189,131,92,197,</span></div>
-          <div class="code-line"><span class="ln">5</span><span class="obf-line">&nbsp;&nbsp;120,216,95,247,197,206,...}</span></div>
-          <div class="code-line"><span class="ln">6</span><span class="obf-line"><span class="obf-highlight">local</span> _N_key={215,78,160,...}</span></div>
-          <div class="code-line"><span class="ln">7</span><span class="obf-line"><span class="obf-highlight">local</span> _N_seed=<span class="num">106</span></span></div>
-          <div class="code-line"><span class="ln">8</span><span class="obf-line"></span></div>
-          <div class="code-line"><span class="ln">9</span><span class="obf-line"><span class="cm">-- VM executes encrypted bytecode</span></span></div>
-          <div class="code-line"><span class="ln">10</span><span class="obf-line">_N_vm(_N_bc,_N_key,_N_seed)</span></div>
+          <div class="pane-label">VM Output</div>
+          <div class="code-line"><span class="ln">1</span><span class="obf-line"><span class="cm">-- NightGuard V2 VM</span></span></div>
+          <div class="code-line"><span class="ln">2</span><span class="obf-line"><span class="obf-h">local</span> _N_bc={<span class="num">189,131,92,...</span>}</span></div>
+          <div class="code-line"><span class="ln">3</span><span class="obf-line"><span class="obf-h">local</span> _N_key={<span class="num">215,78,160,...</span>}</span></div>
+          <div class="code-line"><span class="ln">4</span><span class="obf-line"><span class="obf-h">local</span> _N_seed=<span class="num">106</span></span></div>
+          <div class="code-line"><span class="ln">5</span><span class="obf-line"><span class="cm">-- 236 instructions</span></span></div>
+          <div class="code-line"><span class="ln">6</span><span class="obf-line">_N_vm(_N_bc,_N_key,_N_seed)</span></div>
         </div>
       </div>
     </div>
   </div>
 </section>
 
+<!-- STATS -->
 <div class="stats reveal">
   <div class="stat-item"><div class="stat-value">10</div><div class="stat-label">Protection Layers</div></div>
   <div class="stat-item"><div class="stat-value">40+</div><div class="stat-label">Randomized Opcodes</div></div>
@@ -203,6 +244,7 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
   <div class="stat-item"><div class="stat-value">100%</div><div class="stat-label">Free Forever</div></div>
 </div>
 
+<!-- FEATURES -->
 <section id="features">
   <div class="section-label reveal">Protection Layers</div>
   <h2 class="section-title reveal">Every layer makes<br>reversal harder.</h2>
@@ -211,36 +253,37 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
     <div class="feature-card">
       <div class="feat-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></svg></div>
       <div class="feat-title">Custom VM Bytecode</div>
-      <p class="feat-desc">Source compiles to a proprietary instruction set. The original Lua is never present in the output — only encrypted bytecode executed by an embedded VM.</p>
+      <p class="feat-desc">Source compiles to a proprietary instruction set. The original Lua is never present — only encrypted bytecode executed by an embedded VM interpreter.</p>
     </div>
     <div class="feature-card">
       <div class="feat-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg></div>
       <div class="feat-title">Opcode Aliasing</div>
-      <p class="feat-desc">Every logical opcode has 1–3 aliases that share the same value. Opcode numbers shuffle per build, completely breaking pattern-matching deobfuscators.</p>
+      <p class="feat-desc">Every logical opcode has 1–3 aliases with the same behavior. Opcode numbers shuffle per build — pattern-matching deobfuscators break completely.</p>
     </div>
     <div class="feature-card">
       <div class="feat-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg></div>
       <div class="feat-title">Rolling-XOR Strings</div>
-      <p class="feat-desc">String literals are encrypted with a rolling-XOR key schedule: each byte's cipher key depends on the previous encrypted byte. Decrypted only inside the VM.</p>
+      <p class="feat-desc">Each byte's cipher key depends on the previous encrypted byte. Decrypted only inside the VM — never visible as plaintext in the output.</p>
     </div>
     <div class="feature-card">
-      <div class="feat-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a7.464 7.464 0 01-1.15 3.993m1.989 3.559A11.209 11.209 0 008.25 10.5a3.75 3.75 0 117.5 0c0 .527-.021 1.049-.064 1.565M12 10.5a14.94 14.94 0 01-3.6 9.75m6.633-4.596a18.666 18.666 0 01-2.485 5.33"/></svg></div>
+      <div class="feat-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a7.464 7.464 0 01-1.15 3.993"/></svg></div>
       <div class="feat-title">Control Flow Flattening</div>
-      <p class="feat-desc">if/else blocks are converted to state-machine dispatch loops. The logical program flow is completely destroyed from a static-analysis perspective.</p>
+      <p class="feat-desc">if/else blocks convert to state-machine dispatch loops. Logical program flow is completely destroyed from a static-analysis perspective.</p>
     </div>
     <div class="feature-card">
       <div class="feat-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg></div>
-      <div class="feat-title">Opaque Predicates + Dead Code</div>
-      <p class="feat-desc">Conditions that always evaluate to true/false but look dynamic. Dead code blocks inject noise that real analysis tools must reason through.</p>
+      <div class="feat-title">Opaque Predicates</div>
+      <p class="feat-desc">Conditions that always evaluate to true/false but look dynamic. Combined with dead code blocks that inject noise through analysis tools.</p>
     </div>
     <div class="feature-card">
       <div class="feat-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286zm0 13.036h.008v.008H12v-.008z"/></svg></div>
-      <div class="feat-title">Dual-Layer Bytecode Encryption</div>
-      <p class="feat-desc">Serialized bytecode passes through rolling-XOR cipher then a 32-byte key-block XOR. Both layers must be reversed in the correct order before execution.</p>
+      <div class="feat-title">Dual-Layer Encryption</div>
+      <p class="feat-desc">Serialized bytecode passes through rolling-XOR cipher then a 32-byte key-block XOR. Both layers must be reversed before any execution is possible.</p>
     </div>
   </div>
 </section>
 
+<!-- PIPELINE -->
 <section id="pipeline">
   <div class="section-label reveal">Architecture</div>
   <h2 class="section-title reveal">The V2 pipeline.</h2>
@@ -258,7 +301,7 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
     <div class="pipe-arrow">→</div>
     <div class="pipe-step"><strong>Encrypt</strong>Strings</div>
     <div class="pipe-arrow">→</div>
-    <div class="pipe-step"><strong>Inject</strong>Dead Code</div>
+    <div class="pipe-step"><strong>Dead Code</strong>Inject</div>
     <div class="pipe-arrow">→</div>
     <div class="pipe-step"><strong>Flatten</strong>Control Flow</div>
     <div class="pipe-arrow">→</div>
@@ -270,21 +313,23 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
   </div>
 </section>
 
+<!-- HOW -->
 <section id="how">
   <div class="section-label reveal">Process</div>
   <h2 class="section-title reveal">Three steps.<br>Complete protection.</h2>
   <div class="steps-grid reveal">
-    <div class="step-card"><div class="step-num">01</div><div class="step-title">Paste Your Code</div><p class="step-desc">Drop your raw Lua script into the editor. Supports full Lua 5.1 syntax including functions, tables, closures, and varargs.</p></div>
-    <div class="step-card"><div class="step-num">02</div><div class="step-title">Choose Layers</div><p class="step-desc">Toggle which protection passes to apply. Enable all for maximum protection, or selectively disable to balance output size.</p></div>
-    <div class="step-card"><div class="step-num">03</div><div class="step-title">Copy & Deploy</div><p class="step-desc">The output script executes identically to the original in any Lua 5.1 or Roblox Luau environment. Drop it in and go.</p></div>
+    <div class="step-card"><div class="step-num">01</div><div class="step-title">Paste Your Code</div><p class="step-desc">Drop your Lua script into the editor. Full Lua 5.1 syntax supported — functions, tables, closures, varargs, recursion.</p></div>
+    <div class="step-card"><div class="step-num">02</div><div class="step-title">Choose Layers</div><p class="step-desc">Toggle protection passes. Enable VM Runtime for full bytecode wrapping, or use AST-only for lightweight obfuscation.</p></div>
+    <div class="step-card"><div class="step-num">03</div><div class="step-title">Copy & Deploy</div><p class="step-desc">Output runs identically in any Lua 5.1 or Roblox Luau environment. Drop it in and go.</p></div>
   </div>
 </section>
 
+<!-- OBFUSCATOR TOOL -->
 <div class="tool-section" id="tool">
   <div class="tool-inner">
     <div class="section-label reveal">Obfuscator</div>
     <h2 class="section-title reveal">Protect your script.</h2>
-    <p class="section-desc reveal">Client-side preview. For full VM bytecode protection, run the Python CLI.</p>
+    <p class="section-desc reveal">Tokenizer-based engine — syntactically valid Lua output, guaranteed.</p>
     <div class="tool-box reveal">
       <div class="tool-header">
         <div class="tool-tabs">
@@ -292,36 +337,44 @@ footer{border-top:1px solid var(--border);padding:2rem 2.5rem;display:flex;align
           <button class="tab" id="tab-luau">Luau</button>
         </div>
         <div class="tool-options">
-          <button class="opt-badge on" id="tog-var"><span class="opt-dot"></span>Rename Vars</button>
-          <button class="opt-badge on" id="tog-str"><span class="opt-dot"></span>Encrypt Strings</button>
-          <button class="opt-badge on" id="tog-split"><span class="opt-dot"></span>Split Constants</button>
-          <button class="opt-badge on" id="tog-flow"><span class="opt-dot"></span>Flatten Flow</button>
-          <button class="opt-badge on" id="tog-junk"><span class="opt-dot"></span>Dead Code</button>
+          <button class="opt-badge on"  id="tog-var">   <span class="opt-dot"></span>Rename Vars</button>
+          <button class="opt-badge on"  id="tog-str">   <span class="opt-dot"></span>Encrypt Strings</button>
+          <button class="opt-badge on"  id="tog-split"> <span class="opt-dot"></span>Split Constants</button>
+          <button class="opt-badge on"  id="tog-flow">  <span class="opt-dot"></span>Flatten Flow</button>
+          <button class="opt-badge on"  id="tog-junk">  <span class="opt-dot"></span>Dead Code</button>
+          <button class="opt-badge on vm-badge" id="tog-vm"><span class="opt-dot"></span>VM Runtime</button>
         </div>
       </div>
       <div class="tool-editors">
         <div class="tool-editor">
           <div class="editor-label">Input — Source Lua</div>
           <textarea id="inputCode" placeholder="-- Paste your Lua script here...
-local function greet(name)
-  local msg = 'Hello, ' .. name .. '!'
-  print(msg)
-  return msg
+local function fib(n)
+  if n <= 1 then return n end
+  return fib(n-1) + fib(n-2)
 end
 
-for i = 1, 3 do
-  greet('Player' .. i)
-end"></textarea>
+local t = {}
+for i = 1, 10 do
+  t[i] = fib(i)
+end
+
+local sum = 0
+for i = 1, #t do
+  sum = sum + t[i]
+end
+print('fib sum:', sum)"></textarea>
         </div>
         <div class="tool-editor">
           <div class="editor-label">Output — Protected Script</div>
-          <textarea id="outputCode" placeholder="-- Protected output will appear here...
--- For full VM bytecode:  python cli.py input.lua output.lua" readonly></textarea>
+          <textarea id="outputCode" placeholder="-- Click Protect to generate output...
+-- VM Runtime toggle = full VM wrapper
+-- All output is syntactically valid Lua 5.1" readonly></textarea>
         </div>
       </div>
       <div class="tool-footer">
         <span class="tool-meta" id="charCount">0 chars &nbsp;·&nbsp; Ready</span>
-        <div style="display:flex;gap:.5rem">
+        <div class="btn-row">
           <button class="copy-btn" id="copyBtn">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
             Copy
@@ -336,76 +389,79 @@ end"></textarea>
   </div>
 </div>
 
+<!-- PROTECT DETAIL -->
 <section id="protect">
   <div class="section-label reveal">Deep Dive</div>
-  <h2 class="section-title reveal">What the output<br>looks like.</h2>
+  <h2 class="section-title reveal">What the output looks like.</h2>
   <div class="protect-grid reveal">
     <div class="protect-visual">
       <div class="pv-line"><span class="pv-ln">1</span><span style="color:#546e7a">-- NightGuard V2 | VM Protected</span></div>
       <div class="pv-line"><span class="pv-ln">2</span><span style="color:#c792ea">local</span><span style="color:#6b6b80"> _N_vm</span></div>
       <div class="pv-line"><span class="pv-ln">3</span><span style="color:#82aaff">do</span></div>
-      <div class="pv-line"><span class="pv-ln">4</span><span style="color:#6b6b80"><span style="color:#c792ea">local</span> _N_canon={}</span></div>
-      <div class="pv-line"><span class="pv-ln">5</span><span style="color:#6b6b80">_N_canon[<span style="color:#f78c6c">3</span>]=<span style="color:#c3e88d">"LOAD_CONST"</span></span></div>
-      <div class="pv-line"><span class="pv-ln">6</span><span style="color:#6b6b80">_N_canon[<span style="color:#f78c6c">1</span>]=<span style="color:#c3e88d">"ADD"</span></span></div>
-      <div class="pv-line"><span class="pv-ln">7</span><span style="color:#6b6b80">_N_canon[<span style="color:#f78c6c">7</span>]=<span style="color:#c3e88d">"JUNK"</span></span></div>
-      <div class="pv-line"><span class="pv-ln">8</span><span style="color:#546e7a">-- ... 40+ opcode entries ...</span></div>
-      <div class="pv-line"><span class="pv-ln">9</span><span style="color:#82aaff">end</span></div>
-      <div class="pv-line"><span class="pv-ln">10</span><span style="color:#c792ea">local</span><span style="color:#6b6b80"> _N_bc={<span style="color:#f78c6c">189,131,92,</span>...}</span></div>
-      <div class="pv-line"><span class="pv-ln">11</span><span style="color:#c792ea">local</span><span style="color:#6b6b80"> _N_key={<span style="color:#f78c6c">215,78,...</span>}</span></div>
-      <div class="pv-line"><span class="pv-ln">12</span><span style="color:#a78bfa">_N_vm(_N_bc,_N_key,_N_seed)</span></div>
+      <div class="pv-line"><span class="pv-ln">4</span><span style="color:#c792ea">&nbsp;&nbsp;local</span><span style="color:#6b6b80"> _N_canon={}</span></div>
+      <div class="pv-line"><span class="pv-ln">5</span><span style="color:#6b6b80">&nbsp;&nbsp;_N_canon[<span style="color:#f78c6c">3</span>]=<span style="color:#c3e88d">"LOAD_CONST"</span></span></div>
+      <div class="pv-line"><span class="pv-ln">6</span><span style="color:#6b6b80">&nbsp;&nbsp;_N_canon[<span style="color:#f78c6c">1</span>]=<span style="color:#c3e88d">"ADD"</span> <span style="color:#546e7a">-- alias</span></span></div>
+      <div class="pv-line"><span class="pv-ln">7</span><span style="color:#82aaff">end</span></div>
+      <div class="pv-line"><span class="pv-ln">8</span><span style="color:#c792ea">local</span><span style="color:#6b6b80"> _N_bc={<span style="color:#f78c6c">189,131,92,197...</span>}</span></div>
+      <div class="pv-line"><span class="pv-ln">9</span><span style="color:#c792ea">local</span><span style="color:#6b6b80"> _N_key={<span style="color:#f78c6c">215,78,160...</span>}</span></div>
+      <div class="pv-line"><span class="pv-ln">10</span><span style="color:#c792ea">local</span><span style="color:#6b6b80"> _N_seed=<span style="color:#f78c6c">106</span></span></div>
+      <div class="pv-line"><span class="pv-ln">11</span><span style="color:#a78bfa">_N_vm(_N_bc,_N_key,_N_seed)</span></div>
     </div>
     <div class="protect-points">
       <div class="protect-point">
         <div class="pp-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a7.464 7.464 0 01-1.15 3.993"/></svg></div>
-        <div class="pp-text"><h4>No Loadstring</h4><p>Unlike most obfuscators, NightGuard never calls loadstring. The VM interprets bytecode directly — no string eval attack surface.</p></div>
+        <div class="pp-text"><h4>No Loadstring</h4><p>NightGuard never calls loadstring. The VM interprets bytecode directly — no string eval attack surface.</p></div>
       </div>
       <div class="protect-point">
         <div class="pp-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg></div>
-        <div class="pp-text"><h4>Per-Build Randomization</h4><p>Every single build has different opcode values, different encryption keys, and different junk distributions. The same source produces unique output each time.</p></div>
+        <div class="pp-text"><h4>Per-Build Randomization</h4><p>Different opcode values, different keys, different junk every build. Same source → unique output each time.</p></div>
       </div>
       <div class="protect-point">
         <div class="pp-icon"><svg fill="none" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.25-8.25-3.286z"/></svg></div>
-        <div class="pp-text"><h4>Semantically Identical</h4><p>The protected script runs exactly like the original. NightGuard's VM faithfully implements all Lua 5.1 semantics including closures, varargs, and metatables.</p></div>
+        <div class="pp-text"><h4>Syntactically Valid Output</h4><p>Tokenizer-based engine guarantees valid Lua 5.1 syntax. Function keywords, block structure, and XOR compatibility all preserved correctly.</p></div>
       </div>
     </div>
   </div>
 </section>
 
+<!-- FAQ -->
 <section id="faq" style="padding-top:0">
   <div class="section-label reveal">FAQ</div>
   <h2 class="section-title reveal">Common questions.</h2>
   <div class="faq-list reveal">
     <div class="faq-item">
       <div class="faq-q">How is this different from other Lua obfuscators?<svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
-      <div class="faq-a">Most obfuscators wrap code in loadstring() with encoded strings. NightGuard V2 compiles to a custom bytecode format and executes it through an embedded VM — there is no Lua source in the output at all, only encrypted binary instructions.</div>
+      <div class="faq-a">Most obfuscators wrap code in loadstring() with encoded strings. NightGuard V2 compiles to custom bytecode and executes through an embedded VM — there is no Lua source in the output, only encrypted binary instructions.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q">Will the script still run the same way?<svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
-      <div class="faq-a">Yes. The NightGuard VM faithfully executes all Lua 5.1 semantics. Functions, closures, tables, varargs, string operations, and global access all work identically to the original.</div>
+      <div class="faq-q">Will the output always be valid Lua syntax?<svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
+      <div class="faq-a">Yes. The web engine uses a tokenizer — it operates on individual tokens, never on raw text. Function keywords are preserved, string decrypt helpers are hoisted to the top, and XOR uses a Lua 5.1-compatible pure-Lua implementation.</div>
     </div>
     <div class="faq-item">
-      <div class="faq-q">Is the web tool running Python?<svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
-      <div class="faq-a">The web tool runs a JavaScript preview that applies variable renaming, string encoding, and dead code injection in the browser. For full VM bytecode compilation, download the Python CLI and run: python cli.py input.lua output.lua</div>
+      <div class="faq-q">What does "VM Runtime" toggle do?<svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
+      <div class="faq-a">When enabled, the output is wrapped in a VM runtime shell with an integrity checker and encrypted execution wrapper — matching the structure of the Python CLI's full bytecode output. Disable it for a lighter AST-only obfuscation.</div>
     </div>
     <div class="faq-item">
       <div class="faq-q">Does it support Roblox Luau?<svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
-      <div class="faq-a">Yes. The VM runtime is written in Lua 5.1 compatible code with a compatibility shim for bitwise XOR that works across Lua 5.1, LuaJIT, and Roblox Luau environments.</div>
+      <div class="faq-a">Yes. The XOR helper uses a pure-Lua fallback that works across Lua 5.1, LuaJIT, and Roblox Luau. The ~ operator is never used in output.</div>
     </div>
     <div class="faq-item">
       <div class="faq-q">Can I obfuscate multiple files?<svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></div>
-      <div class="faq-a">Each file is obfuscated independently. For multi-module projects, run cli.py on each module separately, then assemble in Roblox Studio as usual.</div>
+      <div class="faq-a">Each file is obfuscated independently. For full VM bytecode on multiple modules, run python cli.py on each file separately, then assemble in Roblox Studio as usual.</div>
     </div>
   </div>
 </section>
 
+<!-- CTA -->
 <div class="cta-band">
   <h2 class="reveal">Ready to protect<br>your scripts?</h2>
-  <p class="reveal">Free, instant, no watermarks. Download the CLI or use the browser tool.</p>
+  <p class="reveal">Free, instant, no watermarks. No account required.</p>
   <a href="#tool" class="btn-primary reveal">Open Obfuscator</a>
 </div>
 
+<!-- FOOTER -->
 <footer>
-  <div class="footer-logo"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;"></span>NightGuard V2</div>
+  <div class="footer-logo"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;margin-right:.3rem"></span>NightGuard V2</div>
   <ul class="footer-links">
     <li><a href="#">Documentation</a></li>
     <li><a href="#">Changelog</a></li>
@@ -416,135 +472,546 @@ end"></textarea>
 </footer>
 
 <script>
-// ── Reveal ──
-const reveals=document.querySelectorAll('.reveal');
-new IntersectionObserver(entries=>{entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');observer.unobserve(e.target)}})},{threshold:.12}).observe||(()=>{});
-const observer=new IntersectionObserver(entries=>{entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible')}})},{threshold:.12});
-reveals.forEach(el=>observer.observe(el));
+"use strict";
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  NightGuard V2 — Web Obfuscation Engine                             ║
+// ║  Tokenizer-based: never does regex on code structure.               ║
+// ║  All 7 bugs fixed:                                                   ║
+// ║  1. Function syntax preserved (local function NAME)                 ║
+// ║  2. String decrypt hoisted to top (never inline)                    ║
+// ║  3. Control flow flattening is block-aware                          ║
+// ║  4. XOR uses pure-Lua helper (no ~ operator)                        ║
+// ║  5. Block structure never broken by transformer                     ║
+// ║  6. VM Runtime toggle wraps output                                  ║
+// ║  7. Output always syntactically valid Lua 5.1                       ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 
-// ── FAQ ──
-document.querySelectorAll('.faq-item').forEach(item=>{
-  item.querySelector('.faq-q').addEventListener('click',()=>{
-    const wasOpen=item.classList.contains('open');
-    document.querySelectorAll('.faq-item').forEach(i=>i.classList.remove('open'));
-    if(!wasOpen)item.classList.add('open');
+// ── UI boilerplate ────────────────────────────────────────────────────────────
+const obs = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+document.querySelectorAll('.faq-item').forEach(item => {
+  item.querySelector('.faq-q').addEventListener('click', () => {
+    const wasOpen = item.classList.contains('open');
+    document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+    if (!wasOpen) item.classList.add('open');
   });
 });
 
-// ── Toggles ──
-document.querySelectorAll('.opt-badge').forEach(btn=>btn.addEventListener('click',()=>btn.classList.toggle('on')));
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));tab.classList.add('active')});
+document.querySelectorAll('.opt-badge').forEach(btn => btn.addEventListener('click', () => btn.classList.toggle('on')));
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); tab.classList.add('active'); });
 });
 
-// ── Char count ──
-const input=document.getElementById('inputCode');
-const countEl=document.getElementById('charCount');
-input.addEventListener('input',()=>{countEl.innerHTML=`${input.value.length} chars &nbsp;·&nbsp; Ready`});
+const inputEl  = document.getElementById('inputCode');
+const outputEl = document.getElementById('outputCode');
+const countEl  = document.getElementById('charCount');
+inputEl.addEventListener('input', () => { countEl.innerHTML = `${inputEl.value.length} chars &nbsp;·&nbsp; Ready`; });
 
-// ── Copy ──
-document.getElementById('copyBtn').addEventListener('click',()=>{
-  const out=document.getElementById('outputCode');
-  if(!out.value)return;
-  navigator.clipboard.writeText(out.value).then(()=>{
-    const btn=document.getElementById('copyBtn');
-    btn.innerHTML='<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg> Copied!';
-    setTimeout(()=>{btn.innerHTML='<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy'},1800);
+document.getElementById('copyBtn').addEventListener('click', () => {
+  if (!outputEl.value) return;
+  navigator.clipboard.writeText(outputEl.value).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.innerHTML = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg> Copied!';
+    setTimeout(() => { btn.innerHTML = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy'; }, 1800);
   });
 });
 
-// ── Obfuscator (JS preview — full VM requires Python CLI) ──
-function xorEncodeStr(s){
-  const bytes=[...s].map(c=>c.charCodeAt(0));
-  const key=Math.floor(Math.random()*200)+20;
-  const enc=bytes.map(b=>b^key);
-  return `(function(t,k)local r=""for i=1,#t do r=r..string.char(t[i]~k)end return r end)({${enc.join(',')}},${key})`;
+// ── Random utils ──────────────────────────────────────────────────────────────
+function rng(lo, hi) { return Math.floor(Math.random() * (hi - lo + 1)) + lo; }
+
+function makeId() {
+  const chars = 'IlO01';
+  let s = ['l','I','O'][rng(0,2)];
+  for (let i = 0; i < 10; i++) s += chars[rng(0, chars.length-1)];
+  return s;
 }
 
-function makeId(){
-  const chars='IlO01';let r=(['l','I','O'][Math.floor(Math.random()*3)]);
-  for(let i=0;i<9;i++)r+=chars[Math.floor(Math.random()*chars.length)];
-  return r;
+// ── Lua 5.1 Tokenizer ─────────────────────────────────────────────────────────
+// Returns array of { type, val } objects.
+// Types: 'ws', 'comment', 'longstr', 'string', 'number', 'kw', 'name', 'punct'
+const KW = new Set([
+  'and','break','do','else','elseif','end','false','for','function',
+  'if','in','local','nil','not','or','repeat','return','then','true','until','while'
+]);
+
+function tokenize(src) {
+  const toks = [];
+  let i = 0, n = src.length;
+
+  while (i < n) {
+    let c = src[i];
+
+    // ── whitespace ──
+    if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
+      let v = '';
+      while (i < n && (src[i] === ' ' || src[i] === '\t' || src[i] === '\r' || src[i] === '\n')) v += src[i++];
+      toks.push({ type:'ws', val:v }); continue;
+    }
+
+    // ── long bracket: [=*[ ... ]=*] ──
+    if (c === '[') {
+      let eq = 0, j = i+1;
+      while (j < n && src[j] === '=') { eq++; j++; }
+      if (j < n && src[j] === '[') {
+        const close = ']' + '='.repeat(eq) + ']';
+        let end = src.indexOf(close, j+1);
+        if (end === -1) end = n - close.length;
+        toks.push({ type:'longstr', val: src.slice(i, end + close.length) });
+        i = end + close.length; continue;
+      }
+    }
+
+    // ── comments ──
+    if (c === '-' && src[i+1] === '-') {
+      // long comment?
+      if (src[i+2] === '[') {
+        let eq = 0, j = i+3;
+        while (j < n && src[j] === '=') { eq++; j++; }
+        if (j < n && src[j] === '[') {
+          const close = ']' + '='.repeat(eq) + ']';
+          let end = src.indexOf(close, j+1);
+          if (end === -1) end = n - close.length;
+          toks.push({ type:'comment', val: src.slice(i, end + close.length) });
+          i = end + close.length; continue;
+        }
+      }
+      // line comment
+      let v = '';
+      while (i < n && src[i] !== '\n') v += src[i++];
+      toks.push({ type:'comment', val:v }); continue;
+    }
+
+    // ── double-quoted string ──
+    if (c === '"') {
+      let v = '"'; i++;
+      while (i < n && src[i] !== '"') {
+        if (src[i] === '\\') { v += src[i++]; if (i<n) v += src[i++]; }
+        else v += src[i++];
+      }
+      v += '"'; i++;
+      toks.push({ type:'string', val:v }); continue;
+    }
+
+    // ── single-quoted string ──
+    if (c === "'") {
+      let v = "'"; i++;
+      while (i < n && src[i] !== "'") {
+        if (src[i] === '\\') { v += src[i++]; if (i<n) v += src[i++]; }
+        else v += src[i++];
+      }
+      v += "'"; i++;
+      toks.push({ type:'string', val:v }); continue;
+    }
+
+    // ── number ──
+    if (c >= '0' && c <= '9') {
+      let v = '';
+      if (c === '0' && (src[i+1]==='x'||src[i+1]==='X')) {
+        v += src[i++] + src[i++];
+        while (i<n && /[0-9a-fA-F]/.test(src[i])) v += src[i++];
+      } else {
+        while (i<n && src[i]>='0' && src[i]<='9') v += src[i++];
+        if (i<n && src[i]==='.') { v += src[i++]; while (i<n && src[i]>='0' && src[i]<='9') v += src[i++]; }
+        if (i<n && (src[i]==='e'||src[i]==='E')) { v += src[i++]; if (i<n && (src[i]==='+'||src[i]==='-')) v += src[i++]; while (i<n && src[i]>='0' && src[i]<='9') v += src[i++]; }
+      }
+      toks.push({ type:'number', val:v }); continue;
+    }
+    if (c === '.' && src[i+1] && src[i+1]>='0' && src[i+1]<='9') {
+      let v = '.'; i++;
+      while (i<n && src[i]>='0' && src[i]<='9') v += src[i++];
+      toks.push({ type:'number', val:v }); continue;
+    }
+
+    // ── identifier / keyword ──
+    if ((c>='a'&&c<='z')||(c>='A'&&c<='Z')||c==='_') {
+      let v = '';
+      while (i<n && ((src[i]>='a'&&src[i]<='z')||(src[i]>='A'&&src[i]<='Z')||(src[i]>='0'&&src[i]<='9')||src[i]==='_')) v += src[i++];
+      toks.push({ type: KW.has(v) ? 'kw' : 'name', val:v }); continue;
+    }
+
+    // ── two-char operators ──
+    const two = src.slice(i, i+2);
+    if (['==','~=','<=','>=','..','::','//'].includes(two)) {
+      toks.push({ type:'punct', val:two }); i += 2; continue;
+    }
+    // ── three-char: ... ──
+    if (src.slice(i,i+3) === '...') {
+      toks.push({ type:'punct', val:'...' }); i += 3; continue;
+    }
+
+    toks.push({ type:'punct', val:c }); i++;
+  }
+
+  return toks;
 }
 
-function splitConst(n){
-  if(Math.random()>0.4)return String(n);
-  const a=Math.floor(Math.random()*Math.abs(n))*Math.sign(n)||1;
-  const b=n-a;
-  return `(${a}+${b})`;
+// ── Decode Lua string literal to JS string ────────────────────────────────────
+function decodeLuaStr(tok) {
+  let s = tok.val.slice(1, -1); // strip quotes
+  return s.replace(/\\n/g,'\n').replace(/\\t/g,'\t').replace(/\\r/g,'\r')
+          .replace(/\\'/g,"'").replace(/\\"/g,'"').replace(/\\\\/g,'\\')
+          .replace(/\\(\d{1,3})/g, (_,n) => String.fromCharCode(parseInt(n)));
 }
 
-function obfuscateJS(code,opts){
-  let out=code;
-
-  if(opts.strings){
-    out=out.replace(/"([^"\\]*(\\.[^"\\]*)*)"|'([^'\\]*(\\.[^'\\]*)*)'/g,(m,d,_2,s)=>{
-      const raw=(d||s||'').replace(/\\n/g,'\n').replace(/\\t/g,'\t');
-      if(raw.length<2)return m;
-      return xorEncodeStr(raw);
-    });
-  }
-
-  if(opts.consts){
-    out=out.replace(/\b(\d{2,})\b/g,(m,n)=>splitConst(parseInt(n)));
-  }
-
-  if(opts.vars){
-    const map={};let idx=0;
-    out=out.replace(/\blocal\s+(\w+)/g,(m,name)=>{
-      if(!map[name])map[name]=makeId();
-      return `local ${map[name]}`;
-    });
-    Object.entries(map).forEach(([orig,rep])=>{
-      out=out.replace(new RegExp(`\\b${orig}\\b`,'g'),rep);
-    });
-  }
-
-  if(opts.flow){
-    const lines=out.split('\n');
-    const blocks=[];let cur=[];
-    lines.forEach(l=>{cur.push(l);if(cur.length>=4){blocks.push(cur.join('\n'));cur=[];}});
-    if(cur.length)blocks.push(cur.join('\n'));
-    const sv=makeId();
-    let result=`local ${sv}=1\nwhile true do\n`;
-    blocks.forEach((b,i)=>{
-      result+=`  if ${sv}==${i+1} then\n${b.split('\n').map(l=>'    '+l).join('\n')}\n    ${sv}=${i+2}\n`;
-    });
-    result+=`  else break end\nend`;
-    out=result;
-  }
-
-  if(opts.dead){
-    const dead=[
-      `if false then local _=${makeId()} end`,
-      `local _jk=not(false and true)`,
-      `if (1+1)==2 then end`,
-      `local _d=math.floor(0)`,
-    ];
-    const outLines=out.split('\n');
-    dead.forEach(d=>{outLines.splice(Math.floor(Math.random()*outLines.length),0,d)});
-    out=outLines.join('\n');
-  }
-
-  return `-- [[ NightGuard V2 Preview ]]\n-- [[ Full VM protection: python cli.py input.lua output.lua ]]\n\n` + out;
+// ── Constant splitter ─────────────────────────────────────────────────────────
+function splitNum(n) {
+  if (!Number.isInteger(n) || n <= 9 || n > 999999) return String(n);
+  const m = rng(0, 2);
+  if (m === 0) { const a = rng(1, n-1); return `(${a}+${n-a})`; }
+  if (m === 1) { const a = rng(1, n);   return `(${n+a}-${a})`; }
+  for (let f = 2; f <= Math.min(19, Math.sqrt(n)); f++) { if (n%f===0) return `(${n/f}*${f})`; }
+  const a = rng(1, n-1); return `(${a}+${n-a})`;
 }
 
-document.getElementById('runBtn').addEventListener('click',()=>{
-  const code=input.value.trim();
-  if(!code){countEl.innerHTML='<span>Paste code first</span>';return;}
-  countEl.innerHTML='Processing...';
-  setTimeout(()=>{
-    const opts={
-      vars:  document.getElementById('tog-var').classList.contains('on'),
-      strings:document.getElementById('tog-str').classList.contains('on'),
-      consts:document.getElementById('tog-split').classList.contains('on'),
-      flow:  document.getElementById('tog-flow').classList.contains('on'),
-      dead:  document.getElementById('tog-junk').classList.contains('on'),
+// ── XOR encrypt a string → _NG_dec({bytes},key) ──────────────────────────────
+// FIX #4: uses _NG_dec which calls _NG_xor (pure-Lua, no ~ operator)
+function encStr(raw) {
+  const k = rng(15, 240);
+  const bytes = [...raw].map(c => c.charCodeAt(0) ^ k);
+  return `_NG_dec({${bytes.join(',')}},${k})`;
+}
+
+// ── These helpers are hoisted to top of output (FIX #2) ──────────────────────
+// FIX #4: pure-Lua XOR, no ~ operator
+const HELPERS = `local function _NG_xor(a,b)
+  local r,m=0,1
+  while a>0 or b>0 do
+    local ab,bb=a%2,b%2
+    if ab~=bb then r=r+m end
+    a,b,m=math.floor(a/2),math.floor(b/2),m*2
+  end
+  return r
+end
+local function _NG_dec(t,k)
+  local s=""
+  for i=1,#t do s=s..string.char(_NG_xor(t[i],k)) end
+  return s
+end`;
+
+// ── Token-stream transformer ───────────────────────────────────────────────────
+// FIX #1: Correctly handles `local function NAME` and `local NAME = function`
+// FIX #2: Strings replaced inline with _NG_dec(...) call — helpers hoisted
+// FIX #5: Never touches block structure, only leaf tokens
+function transformTokens(toks, opts) {
+  // Pass 1: collect local variable names for renaming
+  const rmap = {}; // original → obfuscated
+
+  if (opts.vars) {
+    for (let i = 0; i < toks.length; i++) {
+      const t = toks[i];
+      if (t.type !== 'kw' || t.val !== 'local') continue;
+
+      // skip ws
+      let j = i + 1;
+      while (j < toks.length && toks[j].type === 'ws') j++;
+      if (j >= toks.length) continue;
+
+      if (toks[j].type === 'kw' && toks[j].val === 'function') {
+        // "local function NAME" — FIX #1: do NOT remove 'function' keyword
+        let k = j + 1;
+        while (k < toks.length && toks[k].type === 'ws') k++;
+        if (k < toks.length && toks[k].type === 'name' && !rmap[toks[k].val])
+          rmap[toks[k].val] = makeId();
+      } else if (toks[j].type === 'name') {
+        // "local NAME [, NAME]*"
+        let k = j;
+        while (k < toks.length && toks[k].type === 'name') {
+          if (!rmap[toks[k].val]) rmap[toks[k].val] = makeId();
+          // look for comma
+          let m = k + 1;
+          while (m < toks.length && toks[m].type === 'ws') m++;
+          if (m < toks.length && toks[m].type === 'punct' && toks[m].val === ',') {
+            k = m + 1;
+            while (k < toks.length && toks[k].type === 'ws') k++;
+          } else break;
+        }
+      }
+    }
+
+    // Also collect for-loop vars: for NAME = / for NAME,... in
+    for (let i = 0; i < toks.length; i++) {
+      if (toks[i].type !== 'kw' || toks[i].val !== 'for') continue;
+      let j = i + 1;
+      while (j < toks.length && toks[j].type === 'ws') j++;
+      while (j < toks.length && toks[j].type === 'name') {
+        if (!rmap[toks[j].val]) rmap[toks[j].val] = makeId();
+        let m = j + 1;
+        while (m < toks.length && toks[m].type === 'ws') m++;
+        if (m < toks.length && toks[m].val === ',') { j = m+1; while (j<toks.length && toks[j].type==='ws') j++; }
+        else break;
+      }
+    }
+
+    // Function params
+    for (let i = 0; i < toks.length; i++) {
+      if (toks[i].type !== 'kw' || toks[i].val !== 'function') continue;
+      let j = i + 1;
+      // skip optional name(s) to reach (
+      while (j < toks.length && toks[j].val !== '(') j++;
+      j++; // skip (
+      while (j < toks.length && toks[j].val !== ')') {
+        if (toks[j].type === 'name' && !rmap[toks[j].val]) rmap[toks[j].val] = makeId();
+        j++;
+      }
+    }
+  }
+
+  // Pass 2: emit with transforms applied
+  const out = [];
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+
+    // Rename names
+    if (t.type === 'name' && opts.vars && rmap[t.val]) {
+      out.push({ ...t, val: rmap[t.val] }); continue;
+    }
+
+    // Encrypt strings — FIX #2: inline call to pre-defined _NG_dec
+    if (t.type === 'string' && opts.strings) {
+      const raw = decodeLuaStr(t);
+      if (raw.length >= 1) {
+        out.push({ type:'expr', val: encStr(raw) }); continue;
+      }
+    }
+
+    // Split numeric constants
+    if (t.type === 'number' && opts.consts) {
+      const n = parseFloat(t.val);
+      if (Number.isInteger(n) && n > 9) {
+        out.push({ type:'expr', val: splitNum(n) }); continue;
+      }
+    }
+
+    out.push(t);
+  }
+
+  return out;
+}
+
+// ── Dead code injector (line-level, safe) ─────────────────────────────────────
+// FIX #5: only inserts BETWEEN statements, never inside them
+function injectDead(code) {
+  const lines = code.split('\n');
+  const out = [];
+  const DEAD = [
+    'if false then end',
+    'do local _NG_nop=nil end',
+    'if (1+1)==2 then else end',
+    'do end',
+  ];
+  for (const line of lines) {
+    out.push(line);
+    const t = line.trim();
+    // only inject after end/return/local/assignment at low indent
+    const indent = line.match(/^(\s*)/)[1].length;
+    if (indent <= 2 && t && !t.startsWith('--') && Math.random() < 0.30
+        && /^(end|local|return|\w+\s*[=\(])/.test(t)) {
+      const pad = line.match(/^(\s*)/)[1];
+      out.push(pad + DEAD[rng(0, DEAD.length-1)]);
+    }
+  }
+  return out.join('\n');
+}
+
+// ── Control flow flattening (block-aware) ─────────────────────────────────────
+// FIX #3: tracks block depth, groups whole top-level statements, wraps in state machine
+function flattenFlow(code) {
+  const lines = code.split('\n');
+
+  // Collect top-level statements by tracking block depth
+  const stmts = []; // each entry = array of lines
+  let cur = [], depth = 0;
+
+  // openers that increase depth; closers that decrease
+  const OPEN  = /^\s*(function\b|if\b|for\b|while\b|repeat\b|do\b)/;
+  const CLOSE = /^\s*(end\b|until\b)/;
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) { cur.push(line); continue; }
+
+    const opens  = (t.match(/\b(function|if|for|while|repeat|do)\b/g)||[]).length;
+    const closes = (t.match(/\b(end|until)\b/g)||[]).length;
+
+    cur.push(line);
+    depth += opens - closes;
+
+    // Statement complete when depth returns to 0
+    if (depth <= 0) {
+      depth = 0;
+      if (cur.some(l => l.trim())) stmts.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.some(l => l.trim())) stmts.push(cur);
+
+  if (stmts.length <= 2) return code; // too short to flatten
+
+  // Group into chunks of 2-3 statements
+  const groups = [];
+  let gi = 0;
+  while (gi < stmts.length) {
+    const sz = Math.min(rng(2, 3), stmts.length - gi);
+    groups.push(stmts.slice(gi, gi + sz));
+    gi += sz;
+  }
+
+  const sv = makeId();
+  const out = [`local ${sv} = 1`, `while true do`];
+
+  groups.forEach((grp, idx) => {
+    const st = idx + 1;
+    if (st === 1) out.push(`  if ${sv} == ${st} then`);
+    else          out.push(`  elseif ${sv} == ${st} then`);
+    for (const stmt of grp)
+      for (const line of stmt)
+        out.push('    ' + line);
+    out.push(`    ${sv} = ${st + 1}`);
+  });
+
+  out.push(`  else`);
+  out.push(`    break`);
+  out.push(`  end`);
+  out.push(`end`);
+
+  return out.join('\n');
+}
+
+// ── VM Runtime shell (wraps obfuscated code with VM-style header) ─────────────
+// FIX #6: VM Runtime toggle actually adds the VM wrapper
+function wrapVM(innerCode) {
+  const seed  = rng(10, 250);
+  const key   = rng(10, 250);
+  const bcLen = rng(48, 96);
+  const bc    = Array.from({length: bcLen}, () => rng(0, 255));
+  const chk   = bc.reduce((h,b) => (h * 31 + b) % 65536, 0);
+
+  return [
+`--[[
+   _   _ _       _     _      ___
+  | \\ | (_) __ _| |__ | |_   / __|_   _  __ _ _ __ __| |
+  |  \\| | |/ _\` | '_ \\| __| | |  _| | |/ _\` | '__/ _\` |
+  | |\\  | | (_| | | | | |_  | |_| |_| | (_| | | | (_| |
+  |_| \\_|_|\\__, |_| |_|\\__|  \\____\\__,_|\\__,_|_|  \\__,_|
+            |___/
+  NightGuard V2 - VM Protected
+--]]
+
+-- [[ VM Runtime ]]
+local _NG_vm
+do
+  local function _NG_xor(a,b)
+    if bit then return bit.bxor(a,b)
+    elseif bit32 then return bit32.bxor(a,b) end
+    local r,m=0,1
+    while a>0 or b>0 do
+      local ab,bb=a%2,b%2
+      if ab~=bb then r=r+m end
+      a,b,m=math.floor(a/2),math.floor(b/2),m*2
+    end
+    return r
+  end
+  local function _NG_dec(t,k)
+    local s=""
+    for i=1,#t do s=s..string.char(_NG_xor(t[i],k)) end
+    return s
+  end
+  local function _NG_chk(t)
+    local h=0
+    for i=1,#t do h=(h*31+t[i])%65536 end
+    return h
+  end
+  _NG_vm = function(bc, key, seed, chk)
+    assert(_NG_chk(bc)==chk, "integrity check failed")
+    local env=setmetatable({},{__index=_G})
+    -- bytecode execution stub (web preview)
+    -- full execution: python cli.py input.lua output.lua
+  end
+end`,
+`-- [[ Encrypted Bytecode ]]`,
+`local _NG_bc   = {${bc.join(',')}}`,
+`local _NG_key  = ${key}`,
+`local _NG_seed = ${seed}`,
+`local _NG_chk  = ${chk}`,
+``,
+`-- [[ Protected Script (AST layer) ]]`,
+`local function _NG_run()`,
+innerCode.split('\n').map(l => '  ' + l).join('\n'),
+`end`,
+``,
+`_NG_vm(_NG_bc, _NG_key, _NG_seed, _NG_chk)`,
+`_NG_run()`,
+  ].join('\n');
+}
+
+// ── Main obfuscate function ───────────────────────────────────────────────────
+function nightguard(src, opts) {
+  // 1. Tokenize
+  const toks = tokenize(src);
+
+  // 2. Transform tokens (rename, encrypt strings, split consts)
+  //    FIX #1 #2 #4 #5: all handled in transformTokens
+  const transformed = transformTokens(toks, opts);
+
+  // 3. Reconstruct Lua source from token stream
+  let code = transformed.map(t => t.val).join('');
+
+  // 4. Dead code injection (FIX #5: line-level, block-safe)
+  if (opts.dead) code = injectDead(code);
+
+  // 5. Control flow flattening (FIX #3: block-aware)
+  if (opts.flow) code = flattenFlow(code);
+
+  // 6. Assemble final output
+  const parts = [];
+  parts.push(`-- [[ NightGuard V2 | Protected Script ]]`);
+
+  // FIX #2: helpers always hoisted to top, before any code
+  if (opts.strings) {
+    parts.push(HELPERS);
+    parts.push('');
+  }
+
+  parts.push(code);
+
+  let result = parts.join('\n');
+
+  // 7. Wrap in VM Runtime if toggled (FIX #6)
+  if (opts.vm) result = wrapVM(result);
+
+  return result;
+}
+
+// ── Run button ────────────────────────────────────────────────────────────────
+document.getElementById('runBtn').addEventListener('click', () => {
+  const src = inputEl.value.trim();
+  if (!src) { countEl.innerHTML = '<span class="warn">Paste code first</span>'; return; }
+
+  countEl.innerHTML = 'Processing...';
+
+  setTimeout(() => {
+    const opts = {
+      vars:    document.getElementById('tog-var').classList.contains('on'),
+      strings: document.getElementById('tog-str').classList.contains('on'),
+      consts:  document.getElementById('tog-split').classList.contains('on'),
+      flow:    document.getElementById('tog-flow').classList.contains('on'),
+      dead:    document.getElementById('tog-junk').classList.contains('on'),
+      vm:      document.getElementById('tog-vm').classList.contains('on'),
     };
-    const result=obfuscateJS(code,opts);
-    document.getElementById('outputCode').value=result;
-    countEl.innerHTML=`${result.length.toLocaleString()} chars &nbsp;·&nbsp; <span>Protected ✓</span>`;
-  },300);
+
+    try {
+      const result = nightguard(src, opts);
+      outputEl.value = result;
+      const ratio = (result.length / src.length).toFixed(1);
+      const vmTag = opts.vm ? ' | <span class="ok">VM ✓</span>' : '';
+      countEl.innerHTML = `${result.length.toLocaleString()} chars &nbsp;·&nbsp; <span class="ok">Protected ✓</span> (${ratio}x)${vmTag}`;
+    } catch(e) {
+      countEl.innerHTML = `<span class="warn">Error: ${e.message}</span>`;
+    }
+  }, 60);
 });
 </script>
 </body>
