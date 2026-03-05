@@ -1,18 +1,20 @@
 """
 NightGuard V2 — Web API
-uvicorn main:app --host 0.0.0.0 --port 10000
+FastAPI + Pydantic v1 (pure Python, no Rust needed)
+Deploy: uvicorn main:app --host 0.0.0.0 --port 10000
 """
 import os, sys, asyncio
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-# flat import — tất cả file nằm cùng thư mục
-sys.path.insert(0, os.path.dirname(__file__))
+# flat import — all engine files in same directory
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cli import obfuscate
 
 # ── App ───────────────────────────────────────────────────────────────
@@ -25,10 +27,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Models ────────────────────────────────────────────────────────────
+# ── Models (pydantic v1 syntax) ───────────────────────────────────────
 class ObfReq(BaseModel):
-    code: str = Field(..., max_length=512_000)   # 512 KB limit
-    seed: int | None = None
+    code: str
+    seed: Optional[int] = None
 
 class ObfRes(BaseModel):
     result:       str
@@ -36,11 +38,15 @@ class ObfRes(BaseModel):
     output_bytes: int
 
 # ── Endpoint ──────────────────────────────────────────────────────────
+MAX_BYTES = 512_000  # 512 KB
+
 @app.post("/obfuscate", response_model=ObfRes)
 async def api_obfuscate(req: ObfReq):
     src = req.code.strip()
     if not src:
         raise HTTPException(400, "code is empty")
+    if len(src.encode()) > MAX_BYTES:
+        raise HTTPException(413, "Script too large (max 512 KB)")
 
     loop = asyncio.get_event_loop()
     try:
