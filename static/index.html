@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NightGuard V2 — Lua Obfuscator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="/">
+    <span class="dot"></span>
+    NightGuard
+    <span class="nav-v2">V2</span>
+  </a>
+  <ul class="nav-links">
+    <li><a href="#tool">Obfuscator</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#faq">FAQ</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-badge">
+    <span class="bdot"></span>
+    VM BYTECODE ENGINE &nbsp;·&nbsp; LUA 5.1 / ROBLOX LUAU
+  </div>
+  <h1>Your scripts,<br /><span class="grad">invisibly protected.</span></h1>
+  <p class="hero-sub">
+    NightGuard compiles Lua to a custom VM bytecode — encrypted, randomized,
+    executed through an embedded virtual machine. No loadstring. No readable source.
+  </p>
+  <div class="hero-btns">
+    <a href="#tool" class="btn-primary">Start Obfuscating</a>
+    <a href="#features" class="btn-ghost">How It Works</a>
+  </div>
+</header>
+
+<!-- STATS -->
+<div class="stats-bar">
+  <div class="stat"><span class="sv">10</span><span class="sl">Protection Layers</span></div>
+  <div class="stat"><span class="sv">40+</span><span class="sl">Randomized Opcodes</span></div>
+  <div class="stat"><span class="sv">0</span><span class="sl">Loadstring Calls</span></div>
+  <div class="stat"><span class="sv">100%</span><span class="sl">Free Forever</span></div>
+</div>
+
+<!-- TOOL -->
+<section class="tool-section" id="tool">
+  <div class="inner">
+    <div class="tool-header">
+      <div class="section-label">Obfuscator</div>
+      <h2 class="section-title">Protect your script.</h2>
+      <p class="section-desc">
+        Full VM bytecode compilation — powered by the Python engine server-side.
+        Output runs identically on Lua 5.1 and Roblox Luau.
+      </p>
+    </div>
+
+    <div class="tool-box">
+
+      <!-- Options -->
+      <div class="tool-opts-bar">
+        <div class="opts-left">
+          <span class="opts-label">OPTIONS</span>
+          <label class="toggle-wrap">
+            <input type="checkbox" id="opt-seed" />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+            <span>Custom Seed</span>
+          </label>
+          <input
+            type="number" id="seed-val"
+            class="seed-input" placeholder="Leave blank for random"
+            min="0" max="4294967295"
+          />
+        </div>
+        <div class="opts-right">
+          <span class="size-badge" id="inputSize">0 B</span>
+        </div>
+      </div>
+
+      <!-- Editors -->
+      <div class="editors">
+        <div class="editor-pane">
+          <div class="editor-label">
+            <span>INPUT — Source Lua</span>
+            <button class="clear-btn" id="clearBtn">Clear</button>
+          </div>
+          <textarea
+            id="inputCode"
+            spellcheck="false"
+            placeholder="-- Paste your Lua script here...
+
+local function fib(n)
+  if n <= 1 then return n end
+  return fib(n-1) + fib(n-2)
+end
+
+local t = {}
+for i = 1, 10 do
+  t[i] = fib(i)
+end
+print(table.concat(t, ', '))
+"></textarea>
+        </div>
+
+        <div class="editor-pane output-pane">
+          <div class="editor-label">
+            <span>OUTPUT — VM Protected</span>
+            <button class="copy-btn" id="copyBtn">Copy</button>
+          </div>
+          <textarea
+            id="outputCode"
+            readonly
+            spellcheck="false"
+            placeholder="-- Protected output appears here.
+-- Compiled server-side with the full Python VM engine."
+          ></textarea>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="tool-footer">
+        <div class="status-area">
+          <div class="status-dot" id="statusDot"></div>
+          <span class="status-text" id="statusText">Ready</span>
+        </div>
+        <div class="btn-group">
+          <button class="btn-run" id="runBtn">
+            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/>
+            </svg>
+            Protect Script
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result meta -->
+    <div class="result-meta" id="resultMeta" style="display:none">
+      <div class="meta-card">
+        <span class="mc-label">Input</span>
+        <span class="mc-val" id="metaIn">—</span>
+      </div>
+      <span class="meta-arrow">→</span>
+      <div class="meta-card">
+        <span class="mc-label">Output</span>
+        <span class="mc-val" id="metaOut">—</span>
+      </div>
+      <span class="meta-arrow">→</span>
+      <div class="meta-card">
+        <span class="mc-label">Expansion</span>
+        <span class="mc-val" id="metaRatio">—</span>
+      </div>
+      <div class="meta-card">
+        <span class="mc-label">Method</span>
+        <span class="mc-val" style="color:var(--green)">Full VM ✓</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features-section" id="features">
+  <div class="inner">
+    <div class="section-label">Protection Layers</div>
+    <h2 class="section-title">Every layer blocks<br />a different attack.</h2>
+    <div class="feature-grid">
+
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/>
+          </svg>
+        </div>
+        <h3>Custom VM Bytecode</h3>
+        <p>Source compiles to a proprietary instruction set. Only encrypted bytecode is in the output — executed by an embedded VM interpreter.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>
+          </svg>
+        </div>
+        <h3>Opcode Aliasing</h3>
+        <p>Every logical opcode has 1–3 aliases. Values shuffle per build — pattern-matching deobfuscators fail completely.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/>
+          </svg>
+        </div>
+        <h3>Dual-Layer Encryption</h3>
+        <p>Bytecode passes through rolling-XOR cipher then a 32-byte key-block XOR. Both must be reversed in the correct order.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
+          </svg>
+        </div>
+        <h3>Opaque Predicates</h3>
+        <p>Always-true/false conditions that look dynamic. Dead code blocks inject noise through automated analysis tools.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7.864 4.243A7.5 7.5 0 0119.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 004.5 10.5a7.464 7.464 0 01-1.15 3.993"/>
+          </svg>
+        </div>
+        <h3>Control Flow Flattening</h3>
+        <p>if/else and loops convert to state-machine dispatch. Logical program structure is completely destroyed for static analysis.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.25-8.25-3.286z"/>
+          </svg>
+        </div>
+        <h3>Per-Build Randomization</h3>
+        <p>Same source → unique output every time. Different opcode values, different keys, different junk injection each run.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="faq-section" id="faq">
+  <div class="inner">
+    <div class="section-label">FAQ</div>
+    <h2 class="section-title">Common questions.</h2>
+    <div class="faq-list">
+
+      <div class="faq-item">
+        <div class="faq-q">
+          How is this different from loadstring obfuscators?
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+        </div>
+        <div class="faq-a">
+          Most obfuscators wrap code in loadstring() with base64 or XOR encoded strings.
+          NightGuard V2 compiles to a custom bytecode format and runs it through an embedded
+          VM interpreter — there is no Lua source in the output at all, only encrypted binary instructions.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          Will the protected script still run correctly?
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+        </div>
+        <div class="faq-a">
+          Yes. The NightGuard VM faithfully implements Lua 5.1 semantics — functions, closures,
+          tables, varargs, string operations, and global access all behave identically to the original.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          Does it support Roblox Luau?
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+        </div>
+        <div class="faq-a">
+          Yes. The VM runtime is written in Lua 5.1 compatible code with a bitwise XOR shim
+          that works across standard Lua 5.1, LuaJIT, and Roblox Luau environments.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          What is Custom Seed?
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+        </div>
+        <div class="faq-a">
+          The seed controls all randomization — opcode shuffling, junk injection, and encryption keys.
+          With the same seed, the same source always produces the same output. Leave it blank for a
+          random seed each time.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q">
+          Is there a script size limit?
+          <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+        </div>
+        <div class="faq-a">
+          The web tool accepts scripts up to 512 KB. Obfuscation has a 60-second server-side
+          timeout. For very large scripts, use the CLI locally: <code>python cli.py input.lua output.lua</code>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">
+    <span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block"></span>
+    NightGuard V2
+  </div>
+  <span class="footer-copy">2025 NightGuard. All rights reserved.</span>
+</footer>
+
+<script src="/static/main.js"></script>
+</body>
+</html>
