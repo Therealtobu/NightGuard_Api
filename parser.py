@@ -3,8 +3,8 @@ Night - Lua 5.1 Recursive Descent Parser
 Produces an AST of ast_nodes types.
 """
 
-from .lexer import Lexer, LexError
-from . import ast_nodes as N
+from lexer import Lexer, LexError          
+import ast_nodes as N                 
 
 class ParseError(Exception):
     pass
