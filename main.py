@@ -2,16 +2,46 @@
 NightGuard V2 — Web API (Flask)
 Start: gunicorn main:app --bind 0.0.0.0:10000
 """
-import os, sys, json, threading
+import os, sys, threading
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Fix: ensure all engine files are importable
+BASE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE)
+
+# Fix relative imports in subpackages
+import importlib, types
+
+def _fix_relative_imports():
+    """
+    Patch parser.py và các file khác nếu chúng dùng relative import.
+    Đọc source, thay 'from .lexer' -> 'from lexer', load lại.
+    """
+    files_to_patch = [
+        os.path.join(BASE, "parser.py"),
+        os.path.join(BASE, "lexer.py"),
+    ]
+    for fpath in files_to_patch:
+        if not os.path.exists(fpath): continue
+        with open(fpath, "r") as f:
+            src = f.read()
+        # replace relative imports
+        patched = src.replace("from .lexer ", "from lexer ") \
+                     .replace("from .parser ", "from parser ") \
+                     .replace("from .ast_nodes ", "from ast_nodes ")
+        if patched != src:
+            with open(fpath, "w") as f:
+                f.write(patched)
+            print(f"[patch] Fixed relative imports in {os.path.basename(fpath)}")
+
+_fix_relative_imports()
+
+from flask import Flask, request, jsonify, send_from_directory
 from cli import obfuscate
 
 app = Flask(__name__, static_folder="static")
 
-MAX_BYTES = 1_000_000  # 512 KB
+MAX_BYTES = 1_000_000  # 1 MB
 
 # ── CORS ──────────────────────────────────────────────────────────────
 @app.after_request
@@ -38,9 +68,8 @@ def api_obfuscate():
     if not code:
         return jsonify({"error": "code is empty"}), 400
     if len(code.encode()) > MAX_BYTES:
-        return jsonify({"error": "Script too large (max 512 KB)"}), 413
+        return jsonify({"error": "Script too large (max 1 MB)"}), 413
 
-    # Run with timeout via thread
     result_box = [None]
     error_box  = [None]
 
@@ -60,8 +89,7 @@ def api_obfuscate():
         return jsonify({"error": "Timed out — try a smaller script"}), 504
     if error_box[0]:
         kind, msg = error_box[0]
-        code_map = {"lua_error": 400, "error": 500}
-        return jsonify({"error": msg}), code_map.get(kind, 500)
+        return jsonify({"error": msg}), (400 if kind == "lua_error" else 500)
 
     result = result_box[0]
     return jsonify({
@@ -74,7 +102,6 @@ def api_obfuscate():
 def health():
     return jsonify({"status": "ok"})
 
-# ── Static + index ────────────────────────────────────────────────────
 @app.route("/static/<path:filename>")
 def static_files(filename):
     return send_from_directory("static", filename)
