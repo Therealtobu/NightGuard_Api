@@ -1,2 +1,2 @@
 # NightGuard
-Best Free Luau Obufuscator
+Best Free Luau Obufuscator.
