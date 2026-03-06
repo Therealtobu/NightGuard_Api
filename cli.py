@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from lexer              import Lexer
 from parser             import Parser, parse
-from transforms        import TransformPipeline
+from ng_transforms        import TransformPipeline
 from compiler.opcodes   import Opcodes
 from compiler.compiler  import Compiler
 from compiler.serializer import serialize_proto, encrypt_bytecode, encode_for_lua
