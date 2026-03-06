@@ -5,7 +5,7 @@ Walks transformed AST, emits packed instructions into Proto objects.
 import random, sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import ast_nodes as N
-from transforms.string_encrypt import EncryptedStringNode
+from ng_transforms.string_encrypt import EncryptedStringNode
 from compiler.proto import Proto
 from compiler.opcodes import Opcodes
 
