@@ -1,6 +1,4 @@
-"""
-TransformPipeline - standalone, no package needed
-"""
+"""TransformPipeline - orchestrates all AST passes in correct order."""
 import random, sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -17,17 +15,24 @@ class TransformPipeline:
         self.string_table = {}
         self._enc_pass = None
         self._passes = []
-        if opts.get("rename", True):
+
+        # Order matters:
+        # 1. Rename first (before CF so renamed names are used in state machines)
+        if opts.get('rename', True):
             self._passes.append(RenameLocalsPass(rng))
-        if opts.get("const_split", True):
+        # 2. Constant split (before CF so split constants appear in state branches)
+        if opts.get('const_split', True):
             self._passes.append(ConstantSplitPass(rng))
-        if opts.get("string_encrypt", True):
+        # 3. String encrypt (before CF so encrypted strings propagate into states)
+        if opts.get('string_encrypt', True):
             enc = StringEncryptPass(rng)
             self._passes.append(enc)
             self._enc_pass = enc
-        if opts.get("dead_code", True):
+        # 4. Dead code injection (before CF — dead branches get flattened too)
+        if opts.get('dead_code', True):
             self._passes.append(DeadCodePass(rng))
-        if opts.get("control_flow", True):
+        # 5. Control flow flattening LAST (operates on fully-transformed AST)
+        if opts.get('control_flow', True):
             self._passes.append(ControlFlowPass(rng))
 
     def run(self, block):
