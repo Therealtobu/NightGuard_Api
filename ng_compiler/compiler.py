@@ -13,14 +13,15 @@ from ng_compiler.opcodes import Opcodes
 class CompileError(Exception): pass
 
 class Compiler:
-    def __init__(self, opcodes, rng, string_table):
+    def __init__(self, opcodes, rng, string_table, progress_cb=None):
         self.op  = opcodes
         self.rng = rng
         self.st  = string_table
+        self.progress_cb = progress_cb
 
     def compile(self, block):
         proto = Proto(self.op.pack_instr, self.op.unpack_instr); proto.is_vararg = True
-        ctx = _Ctx(proto, self.op, self.rng, self.st, None)
+        ctx = _Ctx(proto, self.op, self.rng, self.st, None, progress_cb=self.progress_cb)
         ctx.compile_block(block)
         proto.emit(self.op.get('RETURN'), 0)
         _inject_junk(proto, self.op, self.rng, 0.10)
@@ -28,9 +29,10 @@ class Compiler:
 
 
 class _Ctx:
-    def __init__(self, proto, op, rng, st, parent):
+    def __init__(self, proto, op, rng, st, parent, progress_cb=None):
         self.proto = proto; self.op = op; self.rng = rng; self.st = st; self.parent = parent
         self._locals = {}; self._local_stack = []; self._break_patches = [[]]
+        self.progress_cb = progress_cb or (parent.progress_cb if parent else None)
 
     # ── Locals ────────────────────────────────────────────────────────────────
     def _push_local(self, name):
@@ -186,11 +188,14 @@ class _Ctx:
             if self._local_stack: nm=self._local_stack.pop(); self._locals.pop(nm,None); self.E('POP')
 
     def _s_Function(self, n):
+        fn_name = _node_name(n.name)
+        if self.progress_cb: self.progress_cb("compile", f"fn {fn_name}")
         p = self._compile_func(n.args, n.body)
         self.E('MAKE_CLOSURE', self.proto.add_proto(p))
         self._assign_target(n.name)
 
     def _s_LocalFunction(self, n):
+        if self.progress_cb: self.progress_cb("compile", f"local fn {n.name.id}")
         p = self._compile_func(n.args, n.body)
         slot = len(self._local_stack)
         self._local_stack.append(n.name.id); self._locals[n.name.id]=slot
@@ -198,6 +203,7 @@ class _Ctx:
         self.E('STORE_LOCAL', slot)
 
     def _s_Method(self, n):
+        if self.progress_cb: self.progress_cb("compile", f"method {n.name.id}")
         args = [N.Name('self')] + n.args
         p = self._compile_func(args, n.body)
         self.E('MAKE_CLOSURE', self.proto.add_proto(p))
@@ -205,7 +211,7 @@ class _Ctx:
 
     def _compile_func(self, args, body):
         p = Proto(self.op.pack_instr, self.op.unpack_instr)
-        ctx = _Ctx(p, self.op, self.rng, self.st, self)
+        ctx = _Ctx(p, self.op, self.rng, self.st, self, progress_cb=self.progress_cb)
         for a in args:
             if isinstance(a, N.Vararg): p.is_vararg = True
             else:
@@ -307,3 +313,12 @@ def _inject_junk(proto, op, rng, density=0.08):
         proto.code.insert(pos, pack_instr(rng.choice(junk_ops), 0, 0))
     for child in proto.protos:
         _inject_junk(child, op, rng, density)
+
+def _node_name(node):
+    """Extract a readable name string from a Name/Field/Index AST node."""
+    if node is None: return "?"
+    t = type(node).__name__
+    if t == "Name":   return node.id
+    if t == "Field":  return f"{_node_name(node.value)}.{node.key.id}"
+    if t == "Index":  return f"{_node_name(node.value)}[...]"
+    return t
