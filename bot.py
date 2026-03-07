@@ -17,7 +17,7 @@ from cli import obfuscate
 
 # ── Config ────────────────────────────────────────────────────────────
 TOKEN   = os.environ.get("DISCORD_TOKEN", "")
-MAX_SRC = 500_000   # 500 KB max source
+MAX_SRC = 1_000_000   # 500 KB max source
 
 # ── Bot setup ─────────────────────────────────────────────────────────
 intents = discord.Intents.default()
