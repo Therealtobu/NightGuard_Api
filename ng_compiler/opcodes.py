@@ -1,14 +1,7 @@
-"""
-NightGuard V2 - Randomized Opcode Table with Aliasing + Fake Opcodes
-
-Each build:
-  - Each logical op gets 1-3 aliases (all same behavior, different numbers)
-  - Fake opcodes are sprinkled in (VM no-ops, but break pattern matching)
-  - All 256 slots shuffled randomly per build
-"""
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""NightGuard V2 - Randomized Opcode Table + Instruction Encoding Layout"""
 import random
 
-# Logical opcodes: (name, n_aliases)
 _LOGICAL_OPCODES = [
     ('LOAD_CONST', 2), ('LOAD_NIL', 1), ('LOAD_BOOL', 1),
     ('LOAD_LOCAL', 2), ('STORE_LOCAL', 2),
@@ -30,25 +23,23 @@ _LOGICAL_OPCODES = [
     ('JUNK', 1), ('FAKE_STACK', 1), ('FAKE_MATH', 1),
 ]
 
-# Which aliases map to which canonical behavior
-_ALIAS_MAP = {
-    'ADD_ALT': 'ADD',  # ADD_ALT performs same as ADD
-}
+_ALIAS_MAP = {'ADD_ALT': 'ADD'}
+_FAKE_OPS  = {'JUNK', 'FAKE_STACK', 'FAKE_MATH'}
 
-# Fake ops (VM no-ops)
-_FAKE_OPS = {'JUNK', 'FAKE_STACK', 'FAKE_MATH'}
-
+# Possible instruction encoding layouts
+# Each layout: (op_shift, op_bits, a_shift, a_bits, b_shift, b_bits)
+_LAYOUTS = [
+    (24, 8, 12, 12,  0, 12),   # default: op[31:24] A[23:12] B[11:0]
+    (24, 8,  0, 12, 12, 12),   # swap A and B positions
+    (16, 8, 24,  8,  0, 16),   # op in middle
+    (20, 8,  8, 12,  0,  8),   # compact
+]
 
 class Opcodes:
-    """
-    Per-build opcode table.
-    - Canonical names -> shuffled integer values
-    - Aliases resolve to same canonical logic in VM
-    """
     def __init__(self, seed=None):
         rng = random.Random(seed)
 
-        # Expand aliases into flat list of (canonical, alias_name)
+        # Build opcode table
         entries = []
         for name, n_aliases in _LOGICAL_OPCODES:
             canonical = _ALIAS_MAP.get(name, name)
@@ -56,15 +47,13 @@ class Opcodes:
             for i in range(1, n_aliases):
                 entries.append((canonical, f'{name}_V{i}'))
 
-        # Shuffle and assign values 0..N
         rng.shuffle(entries)
-        self._name2val  = {}   # alias_name -> int
-        self._val2canon = {}   # int -> canonical_name
+        self._name2val  = {}
+        self._val2canon = {}
         for i, (canon, alias) in enumerate(entries):
             self._name2val[alias]  = i
             self._val2canon[i]     = canon
 
-        # Quick lookup: canonical -> list of values
         self._canon2vals = {}
         for alias, val in self._name2val.items():
             canon = self._val2canon[val]
@@ -72,16 +61,29 @@ class Opcodes:
 
         self._rng = rng
 
+        # Pick random instruction encoding layout for this build
+        layout = rng.choice(_LAYOUTS)
+        op_shift, op_bits, a_shift, a_bits, b_shift, b_bits = layout
+        op_mask = (1 << op_bits) - 1
+        a_mask  = (1 << a_bits)  - 1
+        b_mask  = (1 << b_bits)  - 1
+        self.__dict__['layout']       = layout  # (op_shift, op_bits, a_shift, a_bits, b_shift, b_bits)
+
+        def _pack(op, a, b):
+            return ((op & op_mask) << op_shift) | ((a & a_mask) << a_shift) | (b & b_mask)
+        def _unpack(i):
+            return (i >> op_shift) & op_mask, (i >> a_shift) & a_mask, i & b_mask
+
+        self.__dict__['pack_instr']   = _pack
+        self.__dict__['unpack_instr'] = _unpack
+
     def get(self, name: str) -> int:
-        """Return one value for canonical name (picks random alias each call for aliased ops)."""
         canon = _ALIAS_MAP.get(name, name)
         vals  = self._canon2vals.get(canon) or self._canon2vals.get(name)
-        if vals is None:
-            raise KeyError(f"Unknown opcode: {name}")
+        if vals is None: raise KeyError(f"Unknown opcode: {name}")
         return self._rng.choice(vals)
 
     def all_values(self, name: str) -> list:
-        """All numeric values for a canonical op (including all aliases)."""
         canon = _ALIAS_MAP.get(name, name)
         return list(self._canon2vals.get(canon, []))
 
@@ -95,5 +97,6 @@ class Opcodes:
         return dict(self._name2val)
 
     def __getattr__(self, name):
-        if name.startswith('_'): raise AttributeError(name)
+        if name.startswith('_') or name in ('pack_instr', 'unpack_instr', 'layout'):
+            raise AttributeError(name)
         return self.get(name)
