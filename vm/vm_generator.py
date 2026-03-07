@@ -33,7 +33,7 @@ end
 local __I_R0__,__I_R1__,__I_R2__,__I_R3__=0,0,0,0
 local __I_R4__,__I_R5__,__I_R6__,__I_R7__=0,0,0,0
 local __I_GC__=0x5A3F
-local __I_OP__=__INNER_OP__
+__INNER_OP__
 local function __I_EXE__(proto,env,va)
 local _co=coroutine.create(function()
 local cd=proto.code;local k=proto.k;local pr=proto.pr
