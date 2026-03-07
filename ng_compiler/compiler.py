@@ -225,8 +225,12 @@ class _Ctx:
         raise CompileError(f"Unsupported expr: {t}")
 
     def _e_EncryptedStringNode(self, n):
-        enc_bytes, seed, step = self.st[n.idx]
-        c = self.proto.add_const(('__enc_str', tuple(enc_bytes), seed, step))
+        entry = self.st[n.idx]
+        if len(entry) == 4:
+            enc_bytes, seed, step, sub_key = entry
+        else:
+            enc_bytes, seed, step = entry; sub_key = 0
+        c = self.proto.add_const(('__enc_str', tuple(enc_bytes), seed, step, sub_key))
         self.E('LOAD_CONST', c)
 
     def _e_Number(self, n):   self._emit_const(n.n)
