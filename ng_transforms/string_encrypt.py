@@ -1,9 +1,9 @@
-"""NightGuard V2 - Pass 2: Rolling-XOR String Encryption"""
-import random, sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""NightGuard V2 - Multi-layer String Encryption + Lazy Decrypt"""
+import random
 import ast_nodes as N
 
-def rolling_xor_encrypt(s: str, seed: int, step: int) -> list:
+def _xor_encrypt(s: str, seed: int, step: int) -> list:
     key = seed & 0xFF
     out = []
     for ch in s:
@@ -13,29 +13,42 @@ def rolling_xor_encrypt(s: str, seed: int, step: int) -> list:
         if key == 0: key = 1
     return out
 
+def _sub_encrypt(data: list, sub_key: int) -> list:
+    """Substitution layer: byte = (byte + sub_key * i) % 256"""
+    return [(b + sub_key * (i + 1)) % 256 for i, b in enumerate(data)]
+
 class EncryptedStringNode(N.Node):
     def __init__(self, idx): self.idx = idx
 
 class StringEncryptPass:
     def __init__(self, rng):
         self._rng = rng
-        self.string_table = {}  # idx -> (enc_bytes, seed, step)
+        self.string_table = {}
         self._counter = 0
+
     def _encrypt(self, s):
         if len(s) < 2: return None
-        seed = self._rng.randint(2, 254)
-        step = self._rng.randint(3, 251) | 1  # odd for better mixing
-        enc  = rolling_xor_encrypt(s, seed, step)
-        idx  = self._counter; self._counter += 1
-        self.string_table[idx] = (enc, seed, step)
+        seed    = self._rng.randint(2, 254)
+        step    = self._rng.randint(3, 251) | 1
+        sub_key = self._rng.randint(1, 127)
+        layer1  = _xor_encrypt(s, seed, step)
+        enc     = _sub_encrypt(layer1, sub_key)
+        idx     = self._counter; self._counter += 1
+        # Store: enc_bytes, seed, step, sub_key (sub_key used by VM to reverse)
+        self.string_table[idx] = (enc, seed, step, sub_key)
         return idx
+
     def visit(self, node):
         m = getattr(self, f'_v_{type(node).__name__}', None)
         return m(node) if m else node
-    def _v_Block(self, n): return N.Block([r for r in (self.visit(s) for s in n.body) if r is not None])
+
+    def _v_Block(self, n):
+        return N.Block([r for r in (self.visit(s) for s in n.body) if r is not None])
+
     def _v_String(self, n):
         idx = self._encrypt(n.s)
         return EncryptedStringNode(idx) if idx is not None else n
+
     def _v_LocalAssign(self, n):
         return N.LocalAssign(n.targets, [self.visit(v) for v in n.values])
     def _v_Assign(self, n):
@@ -73,7 +86,6 @@ class StringEncryptPass:
             elif isinstance(f, N.TableIndex): flds.append(N.TableIndex(self.visit(f.key), self.visit(f.value)))
             else: flds.append(self.visit(f))
         return N.Table(flds)
-    # Passthrough
     def _v_Name(self, n):      return n
     def _v_Number(self, n):    return n
     def _v_NilExpr(self, n):   return n
@@ -81,7 +93,6 @@ class StringEncryptPass:
     def _v_FalseExpr(self, n): return n
     def _v_Vararg(self, n):    return n
     def _v_Break(self, n):     return n
-
 
 def run(block, rng):
     return StringEncryptPass(rng).visit(block)
