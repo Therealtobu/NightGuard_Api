@@ -20,7 +20,7 @@ class Compiler:
         self.progress_cb = progress_cb
 
     def compile(self, block):
-        proto = Proto(self.op.pack_instr, self.op.unpack_instr); proto.is_vararg = True
+        proto = Proto(); proto._pack = self.op.pack_instr; proto._unpack = self.op.unpack_instr; proto.is_vararg = True
         ctx = _Ctx(proto, self.op, self.rng, self.st, None, progress_cb=self.progress_cb)
         ctx.compile_block(block)
         proto.emit(self.op.get('RETURN'), 0)
@@ -210,7 +210,7 @@ class _Ctx:
         self._expr(n.source); self.E('SET_FIELD', self.proto.add_const(n.name.id))
 
     def _compile_func(self, args, body):
-        p = Proto(self.op.pack_instr, self.op.unpack_instr)
+        p = Proto(); p._pack = self.op.pack_instr; p._unpack = self.op.unpack_instr
         ctx = _Ctx(p, self.op, self.rng, self.st, self, progress_cb=self.progress_cb)
         for a in args:
             if isinstance(a, N.Vararg): p.is_vararg = True
