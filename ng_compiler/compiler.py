@@ -7,8 +7,8 @@ import random, sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import ast_nodes as N
 from ng_transforms.string_encrypt import EncryptedStringNode
-from compiler.proto import Proto
-from compiler.opcodes import Opcodes
+from ng_compiler.proto import Proto
+from ng_compiler.opcodes import Opcodes
 
 class CompileError(Exception): pass
 
