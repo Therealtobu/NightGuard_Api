@@ -1,7 +1,8 @@
 import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 """NightGuard V2 - VM Generator (double VM, register layer, anti-dump, split bc, minified)"""
 
-_VM = r'''--OPCODE_TABLE--
+_VM = r'''local _N_vm
+--OPCODE_TABLE--
 local _bxor
 if bit then _bxor=bit.bxor
 elseif bit32 then _bxor=bit32.bxor
@@ -39,7 +40,7 @@ local function _N_reader(bytes)
   function R.blk()local len=R.u32();local b={};for i=1,len do b[i]=bytes[pos];pos=pos+1 end;return b end
   return R
 end
-local function _N_dec_str(enc,sd,st)local k=sd;local ch={};for i=1,#enc do ch[i]=string.char(_bxor(enc[i],k));k=(k*st+enc[i])%256;if k==0 then k=1 end end;return table.concat(ch)end
+local function _N_dec_str(enc,sd,st,sk)local d={};for i=1,#enc do d[i]=(enc[i]-(sk or 0)*(i)%256+256)%256 end;local k=sd;local ch={};for i=1,#d do ch[i]=string.char(_bxor(d[i],k));k=(k*st+d[i])%256;if k==0 then k=1 end end;return table.concat(ch)end
 local function _N_load_proto(R)
   local p={};p.nparams=R.u8();p.is_vararg=R.u8()==1
   local nc=R.u32();p.code={};for i=1,nc do p.code[i]=R.u32()end
@@ -50,7 +51,7 @@ local function _N_load_proto(R)
     elseif t==1 then p.consts[i]=R.u8()~=0
     elseif t==2 then p.consts[i]=R.f64()
     elseif t==3 then p.consts[i]=R.str()
-    elseif t==4 then local sd=R.u8();local st=R.u8();local len=R.u32();local enc={};for j=1,len do enc[j]=R.u8()end;p.consts[i]=_N_dec_str(enc,sd,st)
+    elseif t==4 then local sd=R.u8();local st=R.u8();local sk=R.u8();local len=R.u32();local enc={};for j=1,len do enc[j]=R.u8()end;p.consts[i]=_N_dec_str(enc,sd,st,sk)
     end
   end
   local np=R.u32();p.protos={}
@@ -178,12 +179,32 @@ _CANON_ID = {
     'JUNK':0,'FAKE_STACK':0,'FAKE_MATH':0,
 }
 
-def generate_vm(opcodes) -> str:
-    lines = ['local _N_op={}']
+def _mut_name(rng, length=10):
+    chars = 'IlO01'
+    return '_' + ''.join(rng.choices(chars, k=length))
+
+def generate_vm(opcodes, rng_seed=None) -> str:
+    import random as _rnd
+    rng = _rnd.Random(rng_seed if rng_seed is not None else _rnd.randint(0, 2**31))
+    
+    # Build opcode table
+    lines = ['local __MUT_OP__={}']
     for alias_name, val in opcodes.all().items():
         canon = opcodes.canonical(val)
         cid = _CANON_ID.get(canon, 0)
         if cid > 0:
-            lines.append(f'_N_op[{val}]={cid}')
+            lines.append(f'__MUT_OP__[{val}]={cid}')
     opcode_block = ';'.join(lines)
-    return _VM.replace('--OPCODE_TABLE--', opcode_block)
+    
+    result = _VM.replace('--OPCODE_TABLE--', opcode_block)
+    
+    # VM Mutation: replace each placeholder with a random name
+    _MUTATABLE = [
+        '__MUT_DEC__', '__MUT_RDR__', '__MUT_DS__', '__MUT_LP__',
+        '__MUT_UNP__', '__MUT_EX__',  '__MUT_CHK__','__MUT_REG__',
+        '__MUT_XOR__', '__MUT_OP__',  '__MUT_FK1__','__MUT_FK2__',
+    ]
+    for placeholder in _MUTATABLE:
+        result = result.replace(placeholder, _mut_name(rng))
+    
+    return result
