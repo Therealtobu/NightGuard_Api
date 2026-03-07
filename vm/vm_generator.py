@@ -50,19 +50,19 @@ __I_GC__=(__I_GC__*1103515245+12345)%0x80000000
 __I_R6__=__I_GC__%256
 if __I_GC__*__I_GC__+1>0 then
 local c=__I_OP__[op]
-if c==1 then P(k[A+1])
-elseif c==2 then P(nil)
-elseif c==3 then P(A~=0)
-elseif c==4 then __I_R7__=lc[A+1];P(__I_R7__)
-elseif c==5 then __I_R7__=Q();lc[A+1]=__I_R7__
-elseif c==6 then P(env[k[A+1]])
-elseif c==7 then env[k[A+1]]=Q()
-elseif c==8 then P({})
-elseif c==9 then local ki=Q();local tb=Q();__I_R7__=tb and tb[ki];P(__I_R7__)
-elseif c==10 then local ki=Q();local tb=Q();local v=Q();if tb then tb[ki]=v end
-elseif c==11 then local tb=Q();__I_R7__=tb and tb[k[A+1]];P(__I_R7__)
-elseif c==12 then local v=Q();local tb=Q();if tb then tb[k[A+1]]=v end
-elseif c==13 then
+if c==__D_LOAD_CONST__ then P(k[A+1])
+elseif c==__D_LOAD_NIL__ then P(nil)
+elseif c==__D_LOAD_BOOL__ then P(A~=0)
+elseif c==__D_LOAD_LOCAL__ then __I_R7__=lc[A+1];P(__I_R7__)
+elseif c==__D_STORE_LOCAL__ then __I_R7__=Q();lc[A+1]=__I_R7__
+elseif c==__D_LOAD_GLOBAL__ then P(env[k[A+1]])
+elseif c==__D_STORE_GLOBAL__ then env[k[A+1]]=Q()
+elseif c==__D_NEW_TABLE__ then P({})
+elseif c==__D_GET_TABLE__ then local ki=Q();local tb=Q();__I_R7__=tb and tb[ki];P(__I_R7__)
+elseif c==__D_SET_TABLE__ then local ki=Q();local tb=Q();local v=Q();if tb then tb[ki]=v end
+elseif c==__D_GET_FIELD__ then local tb=Q();__I_R7__=tb and tb[k[A+1]];P(__I_R7__)
+elseif c==__D_SET_FIELD__ then local v=Q();local tb=Q();if tb then tb[k[A+1]]=v end
+elseif c==__D_CALL__ then
 local args={};for i=A,1,-1 do args[i]=Q()end;local fn=Q()
 __I_R0__=fn
 if type(fn)=="function" then
@@ -70,38 +70,38 @@ if B==0 then fn(table.unpack(args))
 elseif B==1 then __I_R7__=fn(table.unpack(args));P(__I_R7__)
 else local r={fn(table.unpack(args))};for i=1,B do P(r[i])end end
 end
-elseif c==14 then
+elseif c==__D_RETURN__ then
 if A==0 then return end
 local r={};for i=A,1,-1 do r[i]=Q()end;return table.unpack(r)
-elseif c==15 then pc=A+1
-elseif c==16 then if T()then pc=A+1 end
-elseif c==17 then if not T()then pc=A+1 end
-elseif c==18 then if Q()then pc=A+1 end
-elseif c==19 then if not Q()then pc=A+1 end
-elseif c==20 then Q()
-elseif c==21 then __I_R4__=Q();st[sp]=st[sp]+__I_R4__
-elseif c==22 then __I_R4__=Q();st[sp]=st[sp]-__I_R4__
-elseif c==23 then __I_R4__=Q();st[sp]=st[sp]*__I_R4__
-elseif c==24 then __I_R4__=Q();st[sp]=st[sp]/__I_R4__
-elseif c==25 then __I_R4__=Q();st[sp]=st[sp]%__I_R4__
-elseif c==26 then __I_R4__=Q();st[sp]=st[sp]^__I_R4__
-elseif c==27 then __I_R4__=Q();st[sp]=tostring(st[sp])..tostring(__I_R4__)
-elseif c==28 then st[sp]=-st[sp]
-elseif c==29 then st[sp]=not st[sp]
-elseif c==30 then st[sp]=#st[sp]
-elseif c==31 then __I_R4__=Q();st[sp]=(st[sp]==__I_R4__)
-elseif c==32 then __I_R4__=Q();st[sp]=(st[sp]~=__I_R4__)
-elseif c==33 then __I_R4__=Q();st[sp]=(st[sp]<__I_R4__)
-elseif c==34 then __I_R4__=Q();st[sp]=(st[sp]<=__I_R4__)
-elseif c==35 then __I_R4__=Q();st[sp]=(st[sp]>__I_R4__)
-elseif c==36 then __I_R4__=Q();st[sp]=(st[sp]>=__I_R4__)
-elseif c==37 then
+elseif c==__D_JUMP__ then pc=A+1
+elseif c==__D_JUMP_TRUE__ then if T()then pc=A+1 end
+elseif c==__D_JUMP_FALSE__ then if not T()then pc=A+1 end
+elseif c==__D_JUMP_TRUE_POP__ then if Q()then pc=A+1 end
+elseif c==__D_JUMP_FALSE_POP__ then if not Q()then pc=A+1 end
+elseif c==__D_POP__ then Q()
+elseif c==__D_ADD__ then __I_R4__=Q();st[sp]=st[sp]+__I_R4__
+elseif c==__D_SUB__ then __I_R4__=Q();st[sp]=st[sp]-__I_R4__
+elseif c==__D_MUL__ then __I_R4__=Q();st[sp]=st[sp]*__I_R4__
+elseif c==__D_DIV__ then __I_R4__=Q();st[sp]=st[sp]/__I_R4__
+elseif c==__D_MOD__ then __I_R4__=Q();st[sp]=st[sp]%__I_R4__
+elseif c==__D_POW__ then __I_R4__=Q();st[sp]=st[sp]^__I_R4__
+elseif c==__D_CONCAT__ then __I_R4__=Q();st[sp]=tostring(st[sp])..tostring(__I_R4__)
+elseif c==__D_UNM__ then st[sp]=-st[sp]
+elseif c==__D_NOT__ then st[sp]=not st[sp]
+elseif c==__D_LEN__ then st[sp]=#st[sp]
+elseif c==__D_EQ__ then __I_R4__=Q();st[sp]=(st[sp]==__I_R4__)
+elseif c==__D_NEQ__ then __I_R4__=Q();st[sp]=(st[sp]~=__I_R4__)
+elseif c==__D_LT__ then __I_R4__=Q();st[sp]=(st[sp]<__I_R4__)
+elseif c==__D_LE__ then __I_R4__=Q();st[sp]=(st[sp]<=__I_R4__)
+elseif c==__D_GT__ then __I_R4__=Q();st[sp]=(st[sp]>__I_R4__)
+elseif c==__D_GE__ then __I_R4__=Q();st[sp]=(st[sp]>=__I_R4__)
+elseif c==__D_MAKE_CLOSURE__ then
 local p2=pr[A+1];local ue=env
 P(function(...)local a={...};local nl={};for i=1,p2.np do nl[i]=a[i]end;local nv={};if p2.va then for i=p2.np+1,#a do nv[#nv+1]=a[i]end end;return __I_EXE__(p2,ue,nv)end)
-elseif c==38 then P(T())
-elseif c==39 then __I_R4__=Q();__I_R5__=Q();P(__I_R4__);P(__I_R5__)
-elseif c==40 then local n=A==0 and #va or A;for i=1,n do P(va[i])end
-elseif c==41 then local tb=Q();local m=tb and tb[k[A+1]];P(m);P(tb)
+elseif c==__D_DUP__ then P(T())
+elseif c==__D_SWAP__ then __I_R4__=Q();__I_R5__=Q();P(__I_R4__);P(__I_R5__)
+elseif c==__D_VARARG__ then local n=A==0 and #va or A;for i=1,n do P(va[i])end
+elseif c==__D_SELF__ then local tb=Q();local m=tb and tb[k[A+1]];P(m);P(tb)
 end
 __I_R6__=st[sp] or 0;__I_R7__=__I_GC__%128
 end
@@ -156,22 +156,22 @@ __I_EXE__(proto,env,{})
 end
 '''
 
-_CANON_ID={
-    'LOAD_CONST':1,'LOAD_NIL':2,'LOAD_BOOL':3,
-    'LOAD_LOCAL':4,'STORE_LOCAL':5,
-    'LOAD_GLOBAL':6,'STORE_GLOBAL':7,
-    'NEW_TABLE':8,'GET_TABLE':9,'SET_TABLE':10,
-    'GET_FIELD':11,'SET_FIELD':12,
-    'CALL':13,'RETURN':14,
-    'JUMP':15,'JUMP_TRUE':16,'JUMP_FALSE':17,
-    'JUMP_TRUE_POP':18,'JUMP_FALSE_POP':19,
-    'POP':20,
-    'ADD':21,'SUB':22,'MUL':23,'DIV':24,'MOD':25,'POW':26,
-    'CONCAT':27,'UNM':28,'NOT':29,'LEN':30,
-    'EQ':31,'NEQ':32,'LT':33,'LE':34,'GT':35,'GE':36,
-    'MAKE_CLOSURE':37,'DUP':38,'SWAP':39,'VARARG':40,'SELF':41,
-    'JUNK':0,'FAKE_STACK':0,'FAKE_MATH':0,'ADD_ALT':21,
-}
+_CANON_NAMES=[
+    'LOAD_CONST','LOAD_NIL','LOAD_BOOL',
+    'LOAD_LOCAL','STORE_LOCAL',
+    'LOAD_GLOBAL','STORE_GLOBAL',
+    'NEW_TABLE','GET_TABLE','SET_TABLE',
+    'GET_FIELD','SET_FIELD',
+    'CALL','RETURN',
+    'JUMP','JUMP_TRUE','JUMP_FALSE',
+    'JUMP_TRUE_POP','JUMP_FALSE_POP',
+    'POP',
+    'ADD','SUB','MUL','DIV','MOD','POW',
+    'CONCAT','UNM','NOT','LEN',
+    'EQ','NEQ','LT','LE','GT','GE',
+    'MAKE_CLOSURE','DUP','SWAP','VARARG','SELF',
+]
+_CANON_ALIAS={'JUNK':None,'FAKE_STACK':None,'FAKE_MATH':None,'ADD_ALT':'ADD'}
 
 _INNER_PH=[
     '__I_XOR__','__I_DS__','__I_DSC__','__I_RDR__','__I_LDP__',
@@ -190,12 +190,43 @@ def _rn(rng,used,n=10):
         v='_'+rng.choice('lIO')+''.join(rng.choices(chars,k=n-1))
         if v not in used:used.add(v);return v
 
-def _build_op_table(name,opcodes):
-    lines=[f'local {name}={{}}']
+def _build_encrypted_op_table(tbl_name, xor_fn, opcodes, dispatch_ids, rng):
+    """
+    Emit encrypted opcode table + XOR decrypt routine.
+    dispatch_ids: dict {canon_name -> random_int}
+    Returns Lua string that decrypts at runtime — no plaintext mapping visible.
+    """
+    import random
+    # Build raw mapping: opcode_val -> dispatch_id
+    raw={}
     for alias,val in opcodes.all().items():
-        cid=_CANON_ID.get(opcodes.canonical(val),0)
-        if cid>0:lines.append(f'{name}[{val}]={cid}')
-    return ';'.join(lines)
+        canon=opcodes.canonical(val)
+        # resolve alias
+        resolved=_CANON_ALIAS.get(canon,canon)
+        if resolved is None:continue
+        did=dispatch_ids.get(resolved)
+        if did:raw[val]=did
+
+    # XOR key: single random byte per build
+    xk=rng.randint(1,255)
+    # Encrypt: enc[i] = raw[i] XOR xk  (dispatch IDs are ints, XOR low byte)
+    # We store as a flat array indexed by opcode value (max ~60)
+    max_op=max(raw.keys()) if raw else 0
+    enc_arr=[]
+    for i in range(max_op+1):
+        v=raw.get(i,0)
+        enc_arr.append((v^xk)&0xFFFF)
+
+    # Emit: local T={enc...}; local K=xk; local R={}; for i=0,#T-1 do R[i]=xor(T[i+1],K) end
+    arr_lua='{'+','.join(str(x) for x in enc_arr)+'}'
+    lua=(f'local {tbl_name}={{}};'
+         f'do local _e={arr_lua};local _k={xk};'
+         f'for _i=1,#{{}}_e do {tbl_name}[_i-1]={xor_fn}(_e[_i],_k) end end')
+    # Fix: #{} is wrong, use #_e
+    lua=(f'local {tbl_name}={{}};'
+         f'do local _e={arr_lua};local _k={xk};'
+         f'for _i=1,#_e do {tbl_name}[_i-1]={xor_fn}(_e[_i],_k) end end')
+    return lua
 
 def _build_unpack(layout):
     if layout is None:layout=(24,8,12,12,0,12)
@@ -216,43 +247,43 @@ function R.blk()local n=R.u32();local t={};for i=1,n do t[i]=b[p];p=p+1 end;retu
 return R end'''
 
 def generate_vm(opcodes,rng_seed=None,layout=None)->str:
-    import random as _r
+    import random as _r, re
     rng=_r.Random(rng_seed if rng_seed is not None else _r.randint(0,2**31))
     used=set()
     def fresh(n=10):return _rn(rng,used,n)
 
-    # Inner VM mutation
+    # ── Step 1: assign random dispatch IDs per build ──────────────────────────
+    # IDs are large random ints in 10000-65000 range, guaranteed unique
+    id_pool=list(range(10000,65000))
+    rng.shuffle(id_pool)
+    dispatch_ids={name:id_pool[i] for i,name in enumerate(_CANON_NAMES)}
+
+    # ── Step 2: inner VM mutation ─────────────────────────────────────────────
     imap={ph:fresh() for ph in _INNER_PH}
     inner=_INNER_VM
     inner=inner.replace('__INNER_LAYOUT__',_build_unpack(layout))
 
-    # Build inner opcode table inline
+    # Substitute dispatch ID placeholders __D_CANON_NAME__ → actual int
+    for name,did in dispatch_ids.items():
+        inner=inner.replace(f'__D_{name}__',str(did))
+
+    # Build encrypted opcode table
     i_op_name=imap['__I_OP__']
-    op_lines=[f'local {i_op_name}={{}}']
-    for alias,val in opcodes.all().items():
-        cid=_CANON_ID.get(opcodes.canonical(val),0)
-        if cid>0:op_lines.append(f'{i_op_name}[{val}]={cid}')
-    inner=inner.replace('__INNER_OP__',';'.join(op_lines))
+    i_xor_name=imap['__I_XOR__']
+    enc_table_lua=_build_encrypted_op_table(i_op_name,i_xor_name,opcodes,dispatch_ids,rng)
+    inner=inner.replace('__INNER_OP__',enc_table_lua)
+
     for ph,rn in imap.items():inner=inner.replace(ph,rn)
 
-    # Strip all -- comments from inner VM
-    import re
+    # Strip comments and blank lines
     inner=re.sub(r'--[^\n]*','',inner)
-    # Collapse excess whitespace/newlines
     inner=re.sub(r'\n{2,}','\n',inner).strip()
 
-    # Outer VM: references inner VM's EXE function name
+    # ── Step 3: outer VM ──────────────────────────────────────────────────────
     i_exe=imap['__I_EXE__']
-    i_rdr=imap['__I_XOR__']  # reuse naming for outer reader placeholder
-
-    # Build outer — it embeds the inner VM as a string literal
-    # (double VM: outer decodes bytecode, reconstructs inner at runtime)
     outer=_OUTER_VM
 
-    # Outer needs its own reader/loader (separate from inner)
     o_rdr_name=fresh();o_ldp_name=fresh()
-
-    # Build reader + loader Lua (outer uses same format as inner but diff names)
     rdr_lua=(f'local function {o_rdr_name}(b)local p=1;local R={{}}\n'
              f'function R.u8()local v=b[p];p=p+1;return v end\n'
              f'function R.u32()local a,b2,c,d=b[p],b[p+1],b[p+2],b[p+3];p=p+4;return a+b2*256+c*65536+d*16777216 end\n'
@@ -261,31 +292,32 @@ def generate_vm(opcodes,rng_seed=None,layout=None)->str:
              f'function R.blk()local n=R.u32();local t={{}};for i=1,n do t[i]=b[p];p=p+1 end;return t end\n'
              f'return R end')
 
-    # Outer loader (proto deserializer) - same format as inner
     ldp_lua=_build_outer_ldp(o_ldp_name,o_rdr_name,imap)
 
-    # Outer opcode table (same opcodes as inner, separate table name)
+    # Outer also needs encrypted opcode table (same dispatch_ids, separate table+xor names)
     o_op_name=fresh()
-    outer_op_block=_build_op_table(o_op_name,opcodes)
-
-    outer=outer.replace('__OUTER_OP__',outer_op_block)
+    o_xor_name=fresh()  # temp name for outer's xor fn reference (reuse outer __O_XOR__ after mutation)
+    # We'll use the outer XOR placeholder directly — replace after omap mutation
+    # For now build with a temp marker
+    _OUTER_XOR_MARKER='__OUTER_XOR_MARKER__'
+    enc_outer_table=_build_encrypted_op_table(o_op_name,_OUTER_XOR_MARKER,opcodes,dispatch_ids,rng)
+    outer=outer.replace('__OUTER_OP__',enc_outer_table)
     outer=outer.replace('__O_RDR__',o_rdr_name)
     outer=outer.replace('__O_LDP__',o_ldp_name)
     outer=outer.replace('__I_EXE__',i_exe)
 
-    # Outer mutation
     omap={ph:fresh() for ph in _OUTER_PH}
-    # Fix: __O_RDR__ and __O_LDP__ already substituted above
     for ph,rn in omap.items():outer=outer.replace(ph,rn)
 
-    # Remove __O_INJECT__ block (simplify — outer just calls inner exe directly)
-    import re as _re
-    outer=_re.sub(r'local function \w+\(dec\).*?end\n','',outer,flags=_re.DOTALL)
-    # Strip comments
-    outer=_re.sub(r'--[^\n]*','',outer)
-    outer=_re.sub(r'\n{2,}','\n',outer).strip()
+    # Now resolve outer XOR marker to the actual mutated O_XOR name
+    o_xor_actual=omap['__O_XOR__']
+    outer=outer.replace(_OUTER_XOR_MARKER,o_xor_actual)
 
-    # Final output: inner VM + outer VM (outer calls inner's EXE)
+    # Remove unused __O_INJECT__ block
+    outer=re.sub(r'local function \w+\(dec\).*?end\n','',outer,flags=re.DOTALL)
+    outer=re.sub(r'--[^\n]*','',outer)
+    outer=re.sub(r'\n{2,}','\n',outer).strip()
+
     result=inner+'\n'+rdr_lua+'\n'+ldp_lua+'\n'+outer
     return result
 
