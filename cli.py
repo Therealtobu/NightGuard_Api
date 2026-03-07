@@ -5,9 +5,9 @@ sys.path.insert(0, BASE)
 from lexer import Lexer
 from parser import Parser, parse
 from ng_pipeline import TransformPipeline
-from compiler.opcodes import Opcodes
-from compiler.compiler import Compiler
-from compiler.serializer import serialize_proto, encrypt_bytecode, encode_for_lua
+from ng_compiler.opcodes import Opcodes
+from ng_compiler.compiler import Compiler
+from ng_compiler.serializer import serialize_proto, encrypt_bytecode, encode_for_lua
 from vm.vm_generator import generate_vm
 
 BANNER = r"""
