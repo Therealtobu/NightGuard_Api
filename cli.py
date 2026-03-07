@@ -23,10 +23,7 @@ BANNER = r"""
 """
 
 LOADER = """{banner}
-local _N_vm
-do
 {vm}
-end
 local _N_bc1={{{bc1}}}
 local _N_bc2={{{bc2}}}
 local _N_bc3={{{bc3}}}
@@ -50,7 +47,7 @@ def obfuscate(source: str, seed=None, options=None, verbose=False) -> str:
 
     raw = serialize_proto(proto)
     enc, key32, enc_seed = encrypt_bytecode(raw, rng)
-    vm_src = generate_vm(opcodes)
+    vm_src = generate_vm(opcodes, rng_seed=rng.randint(0, 2**31))
     lua_data = encode_for_lua(enc, key32, enc_seed)
 
     return LOADER.format(
