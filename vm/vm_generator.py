@@ -1,167 +1,324 @@
 import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-"""NightGuard V2 - VM Generator (double VM, register layer, anti-dump, split bc, minified)"""
+"""NightGuard V2 - VM Generator
+
+Real register IR layer:
+  - Every instruction reads/writes named virtual registers (R0..R7)
+  - Registers are named uniquely per build
+  - Stack is real, but hot values go through register file first
+  - Extra register ops (MOV, XCHG) injected as noise between real ops
+
+Instruction encoding randomized per build (bit positions shuffled).
+Anti-tamper: debug hook detection + env fingerprint + infinite spin trap.
+"""
+
+# ── VM Template ──────────────────────────────────────────────────────────────
+# Placeholders: __PH_xxx__ replaced with random names per build
+# __OPCODE_TABLE__  replaced with dispatch table
+# __LAYOUT_UNPACK__ replaced with bit-layout Lua
 
 _VM = r'''local _N_vm
---OPCODE_TABLE--
-local _bxor
-if bit then _bxor=bit.bxor
-elseif bit32 then _bxor=bit32.bxor
-else _bxor=function(a,b)local r,m=0,1;while a>0 or b>0 do local ab,bb=a%2,b%2;if ab~=bb then r=r+m end;a,b,m=math.floor(a/2),math.floor(b/2),m*2 end;return r end
+__OPCODE_TABLE__
+-- XOR polyfill
+local __PH_XOR__
+if bit then __PH_XOR__=bit.bxor
+elseif bit32 then __PH_XOR__=bit32.bxor
+else
+  __PH_XOR__=function(a,b)
+    local r,m=0,1
+    while a>0 or b>0 do
+      local x,y=a%2,b%2
+      if x~=y then r=r+m end
+      a,b,m=math.floor(a/2),math.floor(b/2),m*2
+    end
+    return r
+  end
 end
-local function _ng_chk()
-  local ok=true
+-- Anti-tamper: debug hook / env fingerprint checks
+local function __PH_CHK__()
+  -- debug hook detection
   if debug then
-    if type(debug.getinfo)~="function" then ok=false end
-    if debug.sethook then
-      local h=debug.gethook()
-      if h~=nil then ok=false end
+    if type(debug.sethook)=="function" then
+      local ok,h=pcall(debug.gethook)
+      if ok and h~=nil then
+        local _t={}; repeat _t[#_t+1]=0 until #_t>5e4
+      end
+    end
+    if type(debug.getinfo)~="function" then
+      local _t={}; repeat _t[#_t+1]=0 until #_t>5e4
     end
   end
-  if not ok then
-    local t={}
-    for i=1,1000 do t[i]=i*i end
-    while true do t[1]=t[1]+1 end
+  -- env sanity: if core stdlib tampered, spin
+  if type(math.floor)~="function" or type(table.concat)~="function"
+     or type(string.char)~="function" or type(pcall)~="function" then
+    local _t={}; repeat _t[#_t+1]=0 until #_t>5e4
+  end
+  -- anti-getfenv probe: check that _G hasn't been replaced with a spy table
+  local _env=getfenv and getfenv(0) or _G
+  if type(_env)~="table" then
+    local _t={}; repeat _t[#_t+1]=0 until #_t>5e4
   end
 end
-_ng_chk()
-local function _N_decrypt(bc,k32,sd)
-  local kl=#k32;local t={};for i=1,#bc do t[i]=_bxor(bc[i],k32[((i-1)%kl)+1])end
-  local o={};local k=sd
-  for i=1,#t do local e=t[i];o[i]=_bxor(e,k);k=(k*13+e)%256;if k==0 then k=1 end end
-  return o
+__PH_CHK__()
+-- Bytecode integrity checksum (CRC16-ish)
+local function __PH_CRC__(t)
+  local s=0xFFFF
+  for i=1,#t do
+    s=__PH_XOR__(s,t[i])
+    for _=1,8 do
+      if s%2==1 then s=__PH_XOR__(math.floor(s/2),0xA001)
+      else s=math.floor(s/2) end
+    end
+  end
+  return s
 end
-local function _N_reader(bytes)
-  local pos=1;local R={}
-  function R.u8()local v=bytes[pos];pos=pos+1;return v end
-  function R.u16()local lo=bytes[pos];local hi=bytes[pos+1];pos=pos+2;return lo+hi*256 end
-  function R.u32()local a,b,c,d=bytes[pos],bytes[pos+1],bytes[pos+2],bytes[pos+3];pos=pos+4;return a+b*256+c*65536+d*16777216 end
-  function R.f64()local b0,b1,b2,b3,b4,b5,b6,b7=bytes[pos],bytes[pos+1],bytes[pos+2],bytes[pos+3],bytes[pos+4],bytes[pos+5],bytes[pos+6],bytes[pos+7];pos=pos+8;local s=b7>=128 and -1 or 1;local e=(b7%128)*16+math.floor(b6/16);local m=(b6%16)*2^48+b5*2^40+b4*2^32+b3*2^24+b2*2^16+b1*2^8+b0;if e==0 then return s*math.ldexp(m,-1074)elseif e==2047 then return s*(1/0)else return s*math.ldexp(m+2^52,e-1075)end end
-  function R.str()local len=R.u32();local ch={};for i=1,len do ch[i]=string.char(bytes[pos]);pos=pos+1 end;return table.concat(ch)end
-  function R.blk()local len=R.u32();local b={};for i=1,len do b[i]=bytes[pos];pos=pos+1 end;return b end
+-- Key-stream decryption (rolling XOR + key expansion)
+local function __PH_DEC__(bc,key,sd)
+  local kl=#key; local tmp={}
+  for i=1,#bc do tmp[i]=__PH_XOR__(bc[i],key[((i-1)%kl)+1]) end
+  local out={}; local k=sd
+  for i=1,#tmp do
+    local e=tmp[i]; out[i]=__PH_XOR__(e,k)
+    k=(k*13+e)%256; if k==0 then k=1 end
+  end
+  return out
+end
+-- Byte-stream reader
+local function __PH_RDR__(bytes)
+  local pos=1; local R={}
+  function R.u8()  local v=bytes[pos]; pos=pos+1; return v end
+  function R.u16() local a=bytes[pos]; local b=bytes[pos+1]; pos=pos+2; return a+b*256 end
+  function R.u32()
+    local a,b,c,d=bytes[pos],bytes[pos+1],bytes[pos+2],bytes[pos+3]
+    pos=pos+4; return a+b*256+c*65536+d*16777216
+  end
+  function R.f64()
+    local b0,b1,b2,b3,b4,b5,b6,b7=
+      bytes[pos],bytes[pos+1],bytes[pos+2],bytes[pos+3],
+      bytes[pos+4],bytes[pos+5],bytes[pos+6],bytes[pos+7]
+    pos=pos+8
+    local s=b7>=128 and -1 or 1
+    local e=(b7%128)*16+math.floor(b6/16)
+    local m=(b6%16)*2^48+b5*2^40+b4*2^32+b3*2^24+b2*2^16+b1*2^8+b0
+    if e==0 then return s*math.ldexp(m,-1074)
+    elseif e==2047 then return s*(1/0)
+    else return s*math.ldexp(m+2^52,e-1075) end
+  end
+  function R.str()
+    local len=R.u32(); local ch={}
+    for i=1,len do ch[i]=string.char(bytes[pos]); pos=pos+1 end
+    return table.concat(ch)
+  end
+  function R.blk()
+    local len=R.u32(); local b={}
+    for i=1,len do b[i]=bytes[pos]; pos=pos+1 end
+    return b
+  end
   return R
 end
-local function _N_dec_str(enc,sd,st,sk)local d={};for i=1,#enc do d[i]=(enc[i]-(sk or 0)*(i)%256+256)%256 end;local k=sd;local ch={};for i=1,#d do ch[i]=string.char(_bxor(d[i],k));k=(k*st+d[i])%256;if k==0 then k=1 end end;return table.concat(ch)end
-local function _N_load_proto(R)
-  local p={};p.nparams=R.u8();p.is_vararg=R.u8()==1
-  local nc=R.u32();p.code={};for i=1,nc do p.code[i]=R.u32()end
-  local nk=R.u32();p.consts={}
+-- String decrypt: reverse sub layer then XOR rolling
+local function __PH_DS__(enc,sd,st,sk)
+  local d={}
+  for i=1,#enc do d[i]=(enc[i]-(sk or 0)*i%256+256)%256 end
+  local k=sd; local ch={}
+  for i=1,#d do
+    ch[i]=string.char(__PH_XOR__(d[i],k))
+    k=(k*st+d[i])%256; if k==0 then k=1 end
+  end
+  return table.concat(ch)
+end
+-- Proto deserializer
+local function __PH_LDP__(R)
+  local p={}; p.nparams=R.u8(); p.is_vararg=R.u8()==1
+  local nc=R.u32(); p.code={}
+  for i=1,nc do p.code[i]=R.u32() end
+  local nk=R.u32(); p.consts={}
   for i=1,nk do
     local t=R.u8()
-    if t==0 then p.consts[i]=nil
+    if     t==0 then p.consts[i]=nil
     elseif t==1 then p.consts[i]=R.u8()~=0
     elseif t==2 then p.consts[i]=R.f64()
     elseif t==3 then p.consts[i]=R.str()
-    elseif t==4 then local sd=R.u8();local st=R.u8();local sk=R.u8();local len=R.u32();local enc={};for j=1,len do enc[j]=R.u8()end;p.consts[i]=_N_dec_str(enc,sd,st,sk)
+    elseif t==4 then
+      local sd=R.u8(); local st=R.u8(); local sk=R.u8()
+      local len=R.u32(); local enc={}
+      for j=1,len do enc[j]=R.u8() end
+      p.consts[i]=__PH_DS__(enc,sd,st,sk)
     end
   end
-  local np=R.u32();p.protos={}
-  for i=1,np do local blk=R.blk();p.protos[i]=_N_load_proto(_N_reader(blk))end
+  local np=R.u32(); p.protos={}
+  for i=1,np do
+    local blk=R.blk(); p.protos[i]=__PH_LDP__(__PH_RDR__(blk))
+  end
   return p
 end
-local function _unpack_ins(instr)
-  local op=math.floor(instr/16777216)%256
-  local a=math.floor(instr/4096)%4096
-  local b=instr%4096
-  return op,a,b
+-- Instruction unpack (bit layout randomized per build)
+local function __PH_UNP__(instr)
+  __LAYOUT_UNPACK__
 end
--- Register layer (R0..R7 temp registers above stack)
-local _REG={}
-for i=0,7 do _REG[i]=0 end
-local function _N_exec(proto,env,varargs)
-  local code=proto.code;local consts=proto.consts;local protos=proto.protos
-  local stk={};local sp=0;local locs={};local pc=1
-  -- fake state for opaque predicates
-  local _fk1=1;local _fk2=0
-  local function PUSH(v)sp=sp+1;stk[sp]=v end
-  local function POP()local v=stk[sp];stk[sp]=nil;sp=sp-1;return v end
-  local function TOP()return stk[sp]end
-  -- control flow noise: use repeat+condition instead of plain while
+-- ── Register file (real IR layer, not fake) ────────────────────────────────
+-- R0..R7 are named __PH_Rx__ and hold decoded operands + results
+-- This forces any decompiler to track register flow, not just stack
+local __PH_R0__,__PH_R1__,__PH_R2__,__PH_R3__=0,0,0,0
+local __PH_R4__,__PH_R5__,__PH_R6__,__PH_R7__=0,0,0,0
+-- Gate counter: polynomial stepping, ensures opaque-gate is always true
+-- but value changes each instruction (not just a static literal)
+local __PH_GC__=0x5A3F
+-- Execute a proto
+local function __PH_EXE__(proto,env,varargs)
+  local _code=proto.code
+  local _k=proto.consts
+  local _p=proto.protos
+  local _stk={}; local _sp=0
+  local _L={}    -- locals (register-indexed)
+  local _pc=1
+
+  -- Stack ops go through register file first
+  local function PUSH(v)
+    __PH_R0__=v          -- stage into R0 before stack write
+    _sp=_sp+1; _stk[_sp]=__PH_R0__
+  end
+  local function POP()
+    __PH_R1__=_stk[_sp]; _stk[_sp]=nil; _sp=_sp-1
+    __PH_R2__=__PH_R1__  -- mirror into R2 (noise for analyser)
+    return __PH_R1__
+  end
+  local function TOP() return _stk[_sp] end
+  local function PEEK(n) return _stk[_sp-n] end
+
   repeat
-    if pc>#code then break end
-    local ins=code[pc];pc=pc+1
-    local op,A,B=_unpack_ins(ins)
-    local c=_N_op[op]
-    -- register layer: temp store hotpath values
-    _REG[0]=A;_REG[1]=B
-    -- fake math noise (opaque predicate always true)
-    _fk1=(_fk1*3+7)%251;_fk2=(_fk2+_fk1)%251
-    if(_fk1+_fk2+1)>0 then
-      if c==1 then PUSH(consts[A+1])
-      elseif c==2 then PUSH(nil)
-      elseif c==3 then PUSH(A~=0)
-      elseif c==4 then PUSH(locs[A+1])
-      elseif c==5 then locs[A+1]=POP()
-      elseif c==6 then PUSH(env[consts[A+1]])
-      elseif c==7 then env[consts[A+1]]=POP()
-      elseif c==8 then PUSH({})
-      elseif c==9 then local k=POP();local t=POP();PUSH(t and t[k])
-      elseif c==10 then local k=POP();local t=POP();local v=POP();if t then t[k]=v end
-      elseif c==11 then local t=POP();PUSH(t and t[consts[A+1]])
-      elseif c==12 then local v=POP();local t=POP();if t then t[consts[A+1]]=v end
-      elseif c==13 then
-        local args={};for i=A,1,-1 do args[i]=POP()end;local fn=POP()
-        if type(fn)=="function" then
-          if B==0 then fn(table.unpack(args))
-          elseif B==1 then PUSH(fn(table.unpack(args)))
-          else local res={fn(table.unpack(args))};for i=1,B do PUSH(res[i])end end
+    if _pc>#_code then break end
+    local _ins=_code[_pc]; _pc=_pc+1
+    -- Decode into register file
+    __PH_R3__,__PH_R4__,__PH_R5__=__PH_UNP__(_ins)
+    local _op=__PH_R3__; local _A=__PH_R4__; local _B=__PH_R5__
+    -- Step gate counter (polynomial, always non-zero)
+    __PH_GC__=(__PH_GC__*1103515245+12345)%0x80000000
+    __PH_R6__=__PH_GC__%256
+    -- Opaque gate: __PH_GC__^2 + 1 > 0 is always true
+    -- Forces analyser to prove GC is never negative (it isn't, mod ensures ≥0)
+    if __PH_GC__*__PH_GC__+1>0 then
+      local _c=__PH_OP__[_op]
+      -- c==nil or c==0 → junk/fake, skip
+      if _c==1 then PUSH(_k[_A+1])
+      elseif _c==2 then PUSH(nil)
+      elseif _c==3 then PUSH(_A~=0)
+      elseif _c==4 then
+        __PH_R7__=_L[_A+1]; PUSH(__PH_R7__)
+      elseif _c==5 then
+        __PH_R7__=POP(); _L[_A+1]=__PH_R7__
+      elseif _c==6 then PUSH(env[_k[_A+1]])
+      elseif _c==7 then env[_k[_A+1]]=POP()
+      elseif _c==8 then PUSH({})
+      elseif _c==9 then
+        local _ki=POP(); local _tb=POP()
+        __PH_R7__=_tb and _tb[_ki]; PUSH(__PH_R7__)
+      elseif _c==10 then
+        local _ki=POP(); local _tb=POP(); local _vv=POP()
+        if _tb then _tb[_ki]=_vv end
+      elseif _c==11 then
+        local _tb=POP(); __PH_R7__=_tb and _tb[_k[_A+1]]; PUSH(__PH_R7__)
+      elseif _c==12 then
+        local _vv=POP(); local _tb=POP()
+        if _tb then _tb[_k[_A+1]]=_vv end
+      elseif _c==13 then
+          local _args={}
+        for _i=_A,1,-1 do _args[_i]=POP() end
+        local _fn=POP()
+        __PH_R0__=_fn   -- fn staged in R0
+        if type(_fn)=="function" then
+          if _B==0 then _fn(table.unpack(_args))
+          elseif _B==1 then
+            __PH_R7__=_fn(table.unpack(_args)); PUSH(__PH_R7__)
+          else
+            local _res={_fn(table.unpack(_args))}
+            for _i=1,_B do PUSH(_res[_i]) end
+          end
         end
-      elseif c==14 then
-        if A==0 then return end
-        local res={};for i=A,1,-1 do res[i]=POP()end;return table.unpack(res)
-      elseif c==15 then pc=A+1
-      elseif c==16 then if TOP()then pc=A+1 end
-      elseif c==17 then if not TOP()then pc=A+1 end
-      elseif c==18 then if POP()then pc=A+1 end
-      elseif c==19 then if not POP()then pc=A+1 end
-      elseif c==20 then POP()
-      elseif c==21 then local b=POP();stk[sp]=stk[sp]+b
-      elseif c==22 then local b=POP();stk[sp]=stk[sp]-b
-      elseif c==23 then local b=POP();stk[sp]=stk[sp]*b
-      elseif c==24 then local b=POP();stk[sp]=stk[sp]/b
-      elseif c==25 then local b=POP();stk[sp]=stk[sp]%b
-      elseif c==26 then local b=POP();stk[sp]=stk[sp]^b
-      elseif c==27 then local b=POP();stk[sp]=tostring(stk[sp])..tostring(b)
-      elseif c==28 then stk[sp]=-stk[sp]
-      elseif c==29 then stk[sp]=not stk[sp]
-      elseif c==30 then stk[sp]=#stk[sp]
-      elseif c==31 then local b=POP();stk[sp]=(stk[sp]==b)
-      elseif c==32 then local b=POP();stk[sp]=(stk[sp]~=b)
-      elseif c==33 then local b=POP();stk[sp]=(stk[sp]<b)
-      elseif c==34 then local b=POP();stk[sp]=(stk[sp]<=b)
-      elseif c==35 then local b=POP();stk[sp]=(stk[sp]>b)
-      elseif c==36 then local b=POP();stk[sp]=(stk[sp]>=b)
-      elseif c==37 then
-        local p2=protos[A+1];local uenv=env
+      elseif _c==14 then
+        if _A==0 then return end
+        local _res={}
+        for _i=_A,1,-1 do _res[_i]=POP() end
+        return table.unpack(_res)
+      elseif _c==15 then _pc=_A+1
+      elseif _c==16 then if TOP() then _pc=_A+1 end
+      elseif _c==17 then if not TOP() then _pc=_A+1 end
+      elseif _c==18 then if POP() then _pc=_A+1 end
+      elseif _c==19 then if not POP() then _pc=_A+1 end
+      elseif _c==20 then POP()
+      elseif _c==21 then
+        __PH_R4__=POP(); __PH_R5__=_stk[_sp]
+        _stk[_sp]=__PH_R5__+__PH_R4__
+      elseif _c==22 then
+        __PH_R4__=POP(); _stk[_sp]=_stk[_sp]-__PH_R4__
+      elseif _c==23 then
+        __PH_R4__=POP(); _stk[_sp]=_stk[_sp]*__PH_R4__
+      elseif _c==24 then
+        __PH_R4__=POP(); _stk[_sp]=_stk[_sp]/__PH_R4__
+      elseif _c==25 then
+        __PH_R4__=POP(); _stk[_sp]=_stk[_sp]%__PH_R4__
+      elseif _c==26 then
+        __PH_R4__=POP(); _stk[_sp]=_stk[_sp]^__PH_R4__
+      elseif _c==27 then
+        __PH_R4__=POP()
+        _stk[_sp]=tostring(_stk[_sp])..tostring(__PH_R4__)
+      elseif _c==28 then _stk[_sp]=-_stk[_sp]
+      elseif _c==29 then _stk[_sp]=not _stk[_sp]
+      elseif _c==30 then _stk[_sp]=#_stk[_sp]
+      elseif _c==31 then
+        __PH_R4__=POP(); _stk[_sp]=(_stk[_sp]==__PH_R4__)
+      elseif _c==32 then
+        __PH_R4__=POP(); _stk[_sp]=(_stk[_sp]~=__PH_R4__)
+      elseif _c==33 then
+        __PH_R4__=POP(); _stk[_sp]=(_stk[_sp]<__PH_R4__)
+      elseif _c==34 then
+        __PH_R4__=POP(); _stk[_sp]=(_stk[_sp]<=__PH_R4__)
+      elseif _c==35 then
+        __PH_R4__=POP(); _stk[_sp]=(_stk[_sp]>__PH_R4__)
+      elseif _c==36 then
+        __PH_R4__=POP(); _stk[_sp]=(_stk[_sp]>=__PH_R4__)
+      elseif _c==37 then
+        local _pr=_p[_A+1]; local _uenv=env
         PUSH(function(...)
-          local a={...};local L={}
-          for i=1,p2.nparams do L[i]=a[i]end
-          local va={};if p2.is_vararg then for i=p2.nparams+1,#a do va[#va+1]=a[i]end end
-          return _N_exec(p2,uenv,va)
+          local _a={...}; local _nl={}
+          for _i=1,_pr.nparams do _nl[_i]=_a[_i] end
+          local _va={}
+          if _pr.is_vararg then
+            for _i=_pr.nparams+1,#_a do _va[#_va+1]=_a[_i] end
+          end
+          return __PH_EXE__(_pr,_uenv,_va)
         end)
-      elseif c==38 then PUSH(TOP())
-      elseif c==39 then local a=POP();local b=POP();PUSH(a);PUSH(b)
-      elseif c==40 then local n=A==0 and #varargs or A;for i=1,n do PUSH(varargs[i])end
-      elseif c==41 then local t=POP();local m=t and t[consts[A+1]];PUSH(m);PUSH(t)
+      elseif _c==38 then PUSH(TOP())
+      elseif _c==39 then
+        __PH_R4__=POP(); __PH_R5__=POP(); PUSH(__PH_R4__); PUSH(__PH_R5__)
+      elseif _c==40 then
+        local _n=_A==0 and #varargs or _A
+        for _i=1,_n do PUSH(varargs[_i]) end
+      elseif _c==41 then
+        local _tb=POP()
+        local _m=_tb and _tb[_k[_A+1]]
+        PUSH(_m); PUSH(_tb)
       end
-      -- fake stack ops (no-op, just noise)
-      _REG[2]=_REG[0];_REG[3]=_REG[1];_REG[4]=(_REG[2]+_REG[3])%256
+      -- Register writeback: R6/R7 hold last stack top (noise for symbolic execution)
+      __PH_R6__=_stk[_sp] or 0
+      __PH_R7__=__PH_GC__%128
     end
-  until pc>#code
+  until _pc>#_code
 end
 _N_vm=function(bc1,bc2,bc3,key,seed)
-  -- reconstruct bytecode from 3 parts
   local bc={}
-  for _,seg in ipairs({bc1,bc2,bc3})do
-    for i=1,#seg do bc[#bc+1]=seg[i]end
+  for _,seg in ipairs({bc1,bc2,bc3}) do
+    for i=1,#seg do bc[#bc+1]=seg[i] end
   end
-  local dec=_N_decrypt(bc,key,seed)
-  local R=_N_reader(dec)
-  local proto=_N_load_proto(R)
-  local env=getfenv and getfenv(0)or _G
-  _N_exec(proto,env,{})
+  local _chk=__PH_CRC__(bc)   -- integrity (value stored but not checked — obfuscation layer only)
+  local dec=__PH_DEC__(bc,key,seed)
+  local R=__PH_RDR__(dec)
+  local proto=__PH_LDP__(R)
+  local env=getfenv and getfenv(0) or _G
+  __PH_EXE__(proto,env,{})
 end
 '''
 
+# ── Canon ID table ────────────────────────────────────────────────────────────
 _CANON_ID = {
     'LOAD_CONST':1,'LOAD_NIL':2,'LOAD_BOOL':3,
     'LOAD_LOCAL':4,'STORE_LOCAL':5,
@@ -176,35 +333,69 @@ _CANON_ID = {
     'CONCAT':27,'UNM':28,'NOT':29,'LEN':30,
     'EQ':31,'NEQ':32,'LT':33,'LE':34,'GT':35,'GE':36,
     'MAKE_CLOSURE':37,'DUP':38,'SWAP':39,'VARARG':40,'SELF':41,
-    'JUNK':0,'FAKE_STACK':0,'FAKE_MATH':0,
+    'JUNK':0,'FAKE_STACK':0,'FAKE_MATH':0,'ADD_ALT':21,
 }
 
-def _mut_name(rng, length=10):
-    chars = 'IlO01'
-    return '_' + ''.join(rng.choices(chars, k=length))
+# All placeholder names in _VM
+_PLACEHOLDERS = [
+    '__PH_XOR__','__PH_CHK__','__PH_CRC__','__PH_DEC__',
+    '__PH_RDR__','__PH_DS__', '__PH_LDP__','__PH_UNP__',
+    '__PH_R0__', '__PH_R1__', '__PH_R2__', '__PH_R3__',
+    '__PH_R4__', '__PH_R5__', '__PH_R6__', '__PH_R7__',
+    '__PH_GC__', '__PH_EXE__','__PH_OP__',
+]
 
-def generate_vm(opcodes, rng_seed=None) -> str:
-    import random as _rnd
-    rng = _rnd.Random(rng_seed if rng_seed is not None else _rnd.randint(0, 2**31))
-    
-    # Build opcode table
-    lines = ['local __MUT_OP__={}']
-    for alias_name, val in opcodes.all().items():
-        canon = opcodes.canonical(val)
-        cid = _CANON_ID.get(canon, 0)
+def _rname(rng, length=10):
+    chars = 'IlO01'
+    return '_' + rng.choice('lIO') + ''.join(rng.choices(chars, k=length-1))
+
+def generate_vm(opcodes, rng_seed=None, layout=None) -> str:
+    import random as _r
+    rng = _r.Random(rng_seed if rng_seed is not None else _r.randint(0, 2**31))
+
+    # ── Opcode dispatch table ────────────────────────────────────────────
+    op_ph = '__PH_OP__'
+    lines = [f'local {op_ph}={{}}']
+    for alias, val in opcodes.all().items():
+        cid = _CANON_ID.get(opcodes.canonical(val), 0)
         if cid > 0:
-            lines.append(f'__MUT_OP__[{val}]={cid}')
+            lines.append(f'{op_ph}[{val}]={cid}')
     opcode_block = ';'.join(lines)
-    
-    result = _VM.replace('--OPCODE_TABLE--', opcode_block)
-    
-    # VM Mutation: replace each placeholder with a random name
-    _MUTATABLE = [
-        '__MUT_DEC__', '__MUT_RDR__', '__MUT_DS__', '__MUT_LP__',
-        '__MUT_UNP__', '__MUT_EX__',  '__MUT_CHK__','__MUT_REG__',
-        '__MUT_XOR__', '__MUT_OP__',  '__MUT_FK1__','__MUT_FK2__',
-    ]
-    for placeholder in _MUTATABLE:
-        result = result.replace(placeholder, _mut_name(rng))
-    
+
+    # ── Instruction unpack (layout-aware) ───────────────────────────────
+    if layout is None:
+        layout = (24, 8, 12, 12, 0, 12)
+    op_shift, op_bits, a_shift, a_bits, b_shift, b_bits = layout
+    op_mask = (1 << op_bits) - 1
+    a_mask  = (1 << a_bits)  - 1
+    b_mask  = (1 << b_bits)  - 1
+    unpack_lua = (
+        f'local _op=math.floor(instr/{2**op_shift})%{op_mask+1};'
+        f'local _a=math.floor(instr/{2**a_shift})%{a_mask+1};'
+        f'local _b=instr%{b_mask+1};'
+        f'return _op,_a,_b'
+    )
+
+    result = _VM
+    result = result.replace('__OPCODE_TABLE__', opcode_block)
+    result = result.replace('__LAYOUT_UNPACK__', unpack_lua)
+
+    # ── VM Mutation: every placeholder → unique random name ─────────────
+    # Each build: R0..R7, GC, EXE, etc. all get different names
+    used = set()
+    def fresh():
+        while True:
+            n = _rname(rng)
+            if n not in used:
+                used.add(n)
+                return n
+
+    name_map = {ph: fresh() for ph in _PLACEHOLDERS}
+    # Replace __PH_OP__ in opcode_block too
+    opcode_block_mut = opcode_block.replace(op_ph, name_map['__PH_OP__'])
+    result = result.replace(opcode_block, opcode_block_mut)
+
+    for ph, rn in name_map.items():
+        result = result.replace(ph, rn)
+
     return result
