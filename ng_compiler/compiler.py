@@ -296,7 +296,7 @@ def _inject_junk(proto, op, rng, density=0.08):
     for _ in range(n_junk):
         pos = rng.randint(0, len(proto.code))
         instr = Proto().emit.__func__  # just need pack_instr
-        from compiler.proto import pack_instr
+        from ng_compiler.proto import pack_instr
         proto.code.insert(pos, pack_instr(rng.choice(junk_ops), 0, 0))
     for child in proto.protos:
         _inject_junk(child, op, rng, density)
