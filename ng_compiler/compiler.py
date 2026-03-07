@@ -19,7 +19,7 @@ class Compiler:
         self.st  = string_table
 
     def compile(self, block):
-        proto = Proto(); proto.is_vararg = True
+        proto = Proto(self.op.pack_instr, self.op.unpack_instr); proto.is_vararg = True
         ctx = _Ctx(proto, self.op, self.rng, self.st, None)
         ctx.compile_block(block)
         proto.emit(self.op.get('RETURN'), 0)
@@ -204,7 +204,7 @@ class _Ctx:
         self._expr(n.source); self.E('SET_FIELD', self.proto.add_const(n.name.id))
 
     def _compile_func(self, args, body):
-        p = Proto()
+        p = Proto(self.op.pack_instr, self.op.unpack_instr)
         ctx = _Ctx(p, self.op, self.rng, self.st, self)
         for a in args:
             if isinstance(a, N.Vararg): p.is_vararg = True
@@ -226,11 +226,14 @@ class _Ctx:
 
     def _e_EncryptedStringNode(self, n):
         entry = self.st[n.idx]
-        if len(entry) == 4:
-            enc_bytes, seed, step, sub_key = entry
+        L = len(entry)
+        if L >= 6:
+            enc_bytes,seed,step,sub_key,chunks,noise = entry[:6]
+        elif L == 4:
+            enc_bytes,seed,step,sub_key = entry; chunks=None; noise=[]
         else:
-            enc_bytes, seed, step = entry; sub_key = 0
-        c = self.proto.add_const(('__enc_str', tuple(enc_bytes), seed, step, sub_key))
+            enc_bytes,seed,step = entry[:3]; sub_key=0; chunks=None; noise=[]
+        c = self.proto.add_const(('__enc_str',tuple(enc_bytes),seed,step,sub_key,chunks,noise))
         self.E('LOAD_CONST', c)
 
     def _e_Number(self, n):   self._emit_const(n.n)
