@@ -7,6 +7,7 @@ from ng_transforms.string_encrypt import StringEncryptPass
 from ng_transforms.constant_split import ConstantSplitPass
 from ng_transforms.dead_code      import DeadCodePass
 from ng_transforms.control_flow   import ControlFlowPass
+from ng_transforms.string_scatter  import scatter_string_table
 
 class TransformPipeline:
     def __init__(self, rng, options=None):
@@ -40,5 +41,6 @@ class TransformPipeline:
         for p in self._passes:
             node = p.visit(node)
         if self._enc_pass:
-            self.string_table = self._enc_pass.string_table
+            raw_st = self._enc_pass.string_table
+            self.string_table = scatter_string_table(raw_st, self.rng)
         return node
