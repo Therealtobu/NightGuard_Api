@@ -28,11 +28,15 @@ def serialize_proto(proto) -> bytes:
             out += _p8(2); out += _pf64(c)
         elif isinstance(c, str):
             out += _p8(3); out += _pstr(c)
-        elif isinstance(c, tuple) and len(c) == 4 and c[0] == '__enc_str':
-            _, enc_bytes, seed, step = c
+        elif isinstance(c, tuple) and c[0] == '__enc_str':
+            if len(c) == 5:
+                _, enc_bytes, seed, step, sub_key = c
+            else:
+                _, enc_bytes, seed, step = c; sub_key = 0
             out += _p8(4)
             out += _p8(seed & 0xFF)
             out += _p8(step & 0xFF)
+            out += _p8(sub_key & 0xFF)
             out += _p32(len(enc_bytes))
             for b in enc_bytes: out += _p8(b)
         else:
