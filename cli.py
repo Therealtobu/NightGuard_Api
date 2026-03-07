@@ -10,27 +10,9 @@ from ng_compiler.compiler import Compiler
 from ng_compiler.serializer import serialize_proto, encrypt_bytecode, encode_for_lua
 from vm.vm_generator import generate_vm
 
-BANNER = r"""
---[[
-  _   _ _       _     _      ___
- | \ | (_) __ _| |__ | |_   / __|_   _  __ _ _ __ __| |
- |  \| | |/ _` | '_ \| __| | |  _| | |/ _` | '__/ _` |
- | |\  | | (_| | | | | |_  | |_| |_| | (_| | | | (_| |
- |_| \_|_|\__, |_| |_|\__|  \____\__,_|\__,_|_|  \__,_|
-          |___/
-  NightGuard V2
---]]
-"""
 
-LOADER = """{banner}
-{vm}
-local _N_bc1={{{bc1}}}
-local _N_bc2={{{bc2}}}
-local _N_bc3={{{bc3}}}
-local _N_key={key_table}
-local _N_seed={seed}
-_N_vm(_N_bc1,_N_bc2,_N_bc3,_N_key,_N_seed)
-"""
+
+LOADER="--[[\n _   _ _       _     _      ____                     _ \n| \\ | (_) __ _| |__ | |_   / ___|_   _  __ _ _ __ __| |\n|  \\| | |/ _` | '_' \\| __| | |  _| | | |/ _` | '__/ _` |\n| |\\  | | (_| | | | | |_  | |_| | |_| | (_| | | | (_| |\n|_| \\_|_|\\__, |_| |_|\\__|  \\____|\\__,_|\\__,_|_|  \\__,_|\n         |___/\n NightGuard V2\n--]]\n{vm}\nlocal _N_bc1={{{bc1}}}\nlocal _N_bc2={{{bc2}}}\nlocal _N_bc3={{{bc3}}}\nlocal _N_key={key_table}\nlocal _N_seed={seed}\n_N_vm(_N_bc1,_N_bc2,_N_bc3,_N_key,_N_seed)"
 
 def obfuscate(source: str, seed=None, options=None, verbose=False) -> str:
     if seed is None: seed = int(time.time() * 1000) & 0xFFFFFFFF
@@ -47,11 +29,10 @@ def obfuscate(source: str, seed=None, options=None, verbose=False) -> str:
 
     raw = serialize_proto(proto)
     enc, key32, enc_seed = encrypt_bytecode(raw, rng)
-    vm_src = generate_vm(opcodes, rng_seed=rng.randint(0, 2**31))
+    vm_src = generate_vm(opcodes, rng_seed=rng.randint(0, 2**31), layout=opcodes.layout)
     lua_data = encode_for_lua(enc, key32, enc_seed)
 
     return LOADER.format(
-        banner    = BANNER,
         vm        = vm_src,
         bc1       = lua_data['bc1'],
         bc2       = lua_data['bc2'],
