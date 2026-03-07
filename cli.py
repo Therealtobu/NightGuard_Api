@@ -27,10 +27,12 @@ local _N_vm
 do
 {vm}
 end
-{bc_table}
+local _N_bc1={{{bc1}}}
+local _N_bc2={{{bc2}}}
+local _N_bc3={{{bc3}}}
 local _N_key={key_table}
 local _N_seed={seed}
-_N_vm(_N_bc,_N_key,_N_seed)
+_N_vm(_N_bc1,_N_bc2,_N_bc3,_N_key,_N_seed)
 """
 
 def obfuscate(source: str, seed=None, options=None, verbose=False) -> str:
@@ -54,7 +56,9 @@ def obfuscate(source: str, seed=None, options=None, verbose=False) -> str:
     return LOADER.format(
         banner    = BANNER,
         vm        = vm_src,
-        bc_table  = lua_data['bc_table'],
+        bc1       = lua_data['bc1'],
+        bc2       = lua_data['bc2'],
+        bc3       = lua_data['bc3'],
         key_table = lua_data['key_table'],
         seed      = lua_data['seed'],
     )
