@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 """NightGuard V2 - Bytecode Serializer + Dual-Layer Encryptor"""
 import struct, random
 
@@ -64,10 +65,15 @@ def encrypt_bytecode(raw: bytes, rng: random.Random):
     return layer2, key32, seed
 
 def encode_for_lua(enc: bytes, key32: bytes, seed: int) -> dict:
-    nums  = ','.join(str(b) for b in enc)
+    n = len(enc)
+    s1 = n // 3
+    s2 = (n * 2) // 3
+    def nums(b): return ','.join(str(x) for x in b)
     key_s = ','.join(str(b) for b in key32)
     return {
-        'bc_table':  f'local _N_bc={{{nums}}}',
-        'key_table': f'{{{key_s}}}',
+        'bc1':       nums(enc[:s1]),
+        'bc2':       nums(enc[s1:s2]),
+        'bc3':       nums(enc[s2:]),
+        'key_table': '{' + key_s + '}',
         'seed':      seed,
-  }
+    }
