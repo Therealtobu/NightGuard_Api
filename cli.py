@@ -27,10 +27,10 @@ local _N_vm
 do
 {vm}
 end
-local _N_bc   = {{{bc_table}}}
-local _N_key  = {{{key_table}}}
-local _N_seed = {seed}
-_N_vm(_N_bc, _N_key, _N_seed)
+{bc_table}
+local _N_key={key_table}
+local _N_seed={seed}
+_N_vm(_N_bc,_N_key,_N_seed)
 """
 
 def obfuscate(source: str, seed=None, options=None, verbose=False) -> str:
