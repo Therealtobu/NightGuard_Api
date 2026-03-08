@@ -75,6 +75,9 @@ local function __IX_RDR__(b)
   function R.u8()
     local v = b[p]; p = p + 1; return v
   end
+  function R.pos() return p end
+  function R.setpos(v) p = v end
+  function R.rem() return (#b - p + 1) end
   function R.u32()
     local a, b2, c, d = b[p], b[p+1], b[p+2], b[p+3]
     p = p + 4
@@ -146,17 +149,27 @@ local function __IX_LDP__(R)
       local n = R.u32()
       local e = {}
       for j = 1, n do e[j] = R.u8() end
-      local nc2 = R.u8()
+      local legacy = false
+      local p0 = R.pos(); local nc2 = R.u32()
+      if nc2 > math.floor(R.rem() / 8) then
+        R.setpos(p0); nc2 = R.u8(); legacy = true
+      end
       local ch = {}
       for j = 1, nc2 do
         local s = R.u32(); local l = R.u32()
         ch[j] = {s, l}
       end
-      local nn = R.u8()
+      p0 = R.pos(); local nn = R.u32()
+      if nn > math.floor(R.rem() / 8) then
+        R.setpos(p0); nn = R.u8(); legacy = true
+      end
       for j = 1, nn do R.u32(); R.u32() end
-      local no = R.u8()
+      p0 = R.pos(); local no = R.u32()
+      if (not legacy) and no > math.floor(R.rem() / 4) then
+        R.setpos(p0); no = R.u8(); legacy = true
+      end
       local ord = {}
-      for j = 1, no do ord[j] = R.u8() end
+      for j = 1, no do ord[j] = legacy and R.u8() or R.u32() end
       p.k[i] = __IX_DSC__(e, sd, st, sk, ch, ord)
     end
   end
@@ -197,17 +210,17 @@ __IX_DT_DEF__
 
   while pc <= #CD do
     local ins = CD[pc]; pc = pc + 1
-    local op  = ins & 0xFF
-    local a   = (ins >> 8)  & 0xFF
-    local b   = (ins >> 16) & 0xFF
-    local c   = (ins >> 24) & 0xFF
-    local bx  = (ins >> 16) & 0xFFFF
+    local op  = ins % 256
+    local a   = math.floor(ins / 256) % 256
+    local b   = math.floor(ins / 65536) % 256
+    local c   = math.floor(ins / 16777216) % 256
+    local bx  = math.floor(ins / 65536) % 65536
     local sbx = bx - 32767
 
     -- Fake state mutation (anti-tracing)
     __IX_FA__ = (__IX_FA__ * 1103515245 + 12345) % 0x80000000
     __IX_FB__ = __IX_FA__ % 256
-    __IX_FC__ = __IX_FB__ ~ op
+    __IX_FC__ = __IX_XOR__(__IX_FB__, op)
 
     local nm = __IX_OP__[op]
     if op == __IX_RET_ID__ then
@@ -296,6 +309,9 @@ local function __OX_RDR__(b)
   function R.u8()
     local v = b[p]; p = p + 1; return v
   end
+  function R.pos() return p end
+  function R.setpos(v) p = v end
+  function R.rem() return (#b - p + 1) end
   function R.u32()
     local a, b2, c, d = b[p], b[p+1], b[p+2], b[p+3]
     p = p + 4
@@ -367,17 +383,27 @@ local function __OX_LDP__(R)
       local n = R.u32()
       local e = {}
       for j = 1, n do e[j] = R.u8() end
-      local nc2 = R.u8()
+      local legacy = false
+      local p0 = R.pos(); local nc2 = R.u32()
+      if nc2 > math.floor(R.rem() / 8) then
+        R.setpos(p0); nc2 = R.u8(); legacy = true
+      end
       local ch = {}
       for j = 1, nc2 do
         local s = R.u32(); local l = R.u32()
         ch[j] = {s, l}
       end
-      local nn = R.u8()
+      p0 = R.pos(); local nn = R.u32()
+      if nn > math.floor(R.rem() / 8) then
+        R.setpos(p0); nn = R.u8(); legacy = true
+      end
       for j = 1, nn do R.u32(); R.u32() end
-      local no = R.u8()
+      p0 = R.pos(); local no = R.u32()
+      if (not legacy) and no > math.floor(R.rem() / 4) then
+        R.setpos(p0); no = R.u8(); legacy = true
+      end
       local ord = {}
-      for j = 1, no do ord[j] = R.u8() end
+      for j = 1, no do ord[j] = legacy and R.u8() or R.u32() end
       p.k[i] = __IX_DSC_REF__(e, sd, st, sk, ch, ord)
     end
   end
