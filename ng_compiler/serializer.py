@@ -41,14 +41,14 @@ def serialize_proto(proto)->bytes:
                 out+=_p8(seed&0xFF); out+=_p8(step&0xFF); out+=_p8(sk&0xFF)
                 out+=_p32(len(enc))
                 for b in enc: out+=_p8(b)
-                out+=_p8(len(chunks))
+                out+=_p32(len(chunks))
                 for s,l in chunks: out+=_p32(s); out+=_p32(l)
                 noise=noise or []
-                out+=_p8(len(noise))
+                out+=_p32(len(noise))
                 for s,l in noise: out+=_p32(s); out+=_p32(l)
                 order=order if order is not None else list(range(len(chunks)))
-                out+=_p8(len(order))
-                for o in order: out+=_p8(o&0xFF)
+                out+=_p32(len(order))
+                for o in order: out+=_p32(o)
         else:
             out+=_p8(3); out+=_pstr(str(c))
     # nested protos (length-prefixed blobs)

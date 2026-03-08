@@ -146,17 +146,17 @@ local function __IX_LDP__(R)
       local n = R.u32()
       local e = {}
       for j = 1, n do e[j] = R.u8() end
-      local nc2 = R.u8()
+      local nc2 = R.u32()
       local ch = {}
       for j = 1, nc2 do
         local s = R.u32(); local l = R.u32()
         ch[j] = {s, l}
       end
-      local nn = R.u8()
+      local nn = R.u32()
       for j = 1, nn do R.u32(); R.u32() end
-      local no = R.u8()
+      local no = R.u32()
       local ord = {}
-      for j = 1, no do ord[j] = R.u8() end
+      for j = 1, no do ord[j] = R.u32() end
       p.k[i] = __IX_DSC__(e, sd, st, sk, ch, ord)
     end
   end
@@ -367,17 +367,17 @@ local function __OX_LDP__(R)
       local n = R.u32()
       local e = {}
       for j = 1, n do e[j] = R.u8() end
-      local nc2 = R.u8()
+      local nc2 = R.u32()
       local ch = {}
       for j = 1, nc2 do
         local s = R.u32(); local l = R.u32()
         ch[j] = {s, l}
       end
-      local nn = R.u8()
+      local nn = R.u32()
       for j = 1, nn do R.u32(); R.u32() end
-      local no = R.u8()
+      local no = R.u32()
       local ord = {}
-      for j = 1, no do ord[j] = R.u8() end
+      for j = 1, no do ord[j] = R.u32() end
       p.k[i] = __IX_DSC_REF__(e, sd, st, sk, ch, ord)
     end
   end
