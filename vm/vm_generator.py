@@ -35,20 +35,18 @@ local __I_R4__,__I_R5__,__I_R6__,__I_R7__=0,0,0,0
 local __I_GC__=0x5A3F
 __INNER_OP__
 local function __I_EXE__(proto,env,va)
-local _co=coroutine.create(function()
 local cd=proto.code;local k=proto.k;local pr=proto.pr
 local st={};local sp=0;local lc={};local pc=1
 local function P(v)__I_R0__=v;sp=sp+1;st[sp]=__I_R0__ end
 local function Q()__I_R1__=st[sp];st[sp]=nil;sp=sp-1;__I_R2__=__I_R1__;return __I_R1__ end
 local function T()return st[sp]end
-repeat
-if pc>#cd then break end
+__INNER_DT_INIT__
+while pc<=#cd do
 local ins=cd[pc];pc=pc+1
 __I_R3__,__I_R4__,__I_R5__=__I_UNP__(ins)
 local op=__I_R3__;local A=__I_R4__;local B=__I_R5__
 __I_GC__=(__I_GC__*1103515245+12345)%0x80000000
 __I_R6__=__I_GC__%256
-__INNER_DT_INIT__
 if __I_GC__*__I_GC__+1>0 then
 local c=__I_OP__[op]
 if c==__D_RETURN__ then
@@ -60,19 +58,7 @@ if _fn then _fn(A,B)end
 end
 __I_R6__=st[sp] or 0;__I_R7__=__I_GC__%128
 end
--- yield every 200 instructions only in Roblox async context
-if (task or delay) and pc%200==0 then coroutine.yield()end
-until pc>#cd
-end)
--- step coroutine until done
-local function step()
-local ok,err=coroutine.resume(_co)
-if not ok then error(err,2)end
-if coroutine.status(_co)~="dead" then
-if task then task.defer(step)elseif delay then delay(0,step)end
 end
-end
-step()
 end
 '''
 
