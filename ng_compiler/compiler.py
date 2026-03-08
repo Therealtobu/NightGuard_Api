@@ -303,36 +303,55 @@ class _Ctx:
 
 
 def _inject_junk(proto, op, rng, density=0.08):
-    """Insert JUNK / FAKE no-ops at random positions (after all patches are done).
+    """Insert JUNK / FAKE no-ops ONLY at statement boundaries (stack=0 points).
+    Safe positions: after STORE_LOCAL, STORE_GLOBAL, POP, RETURN, JUMP*.
+    This avoids corrupting stack during expression evaluation.
     Each insertion re-patches all jump targets that point past the insertion point.
     """
     from ng_compiler.proto import pack_instr as _pack_default
 
-    # Canonical jump opcode names
     _JUMP_CANONS = {'JUMP','JUMP_TRUE','JUMP_FALSE','JUMP_TRUE_POP','JUMP_FALSE_POP'}
+    # Only insert AFTER these opcodes — they leave stack clean
+    _SAFE_AFTER = {'STORE_LOCAL','STORE_GLOBAL','POP','RETURN',
+                   'JUMP','JUMP_TRUE_POP','JUMP_FALSE_POP'}
 
     junk_ops = [op.get('JUNK'), op.get('FAKE_STACK'), op.get('FAKE_MATH')]
 
-    # Use proto's own pack/unpack if available
     _pack   = getattr(proto, '_pack',   _pack_default)
     _unpack = getattr(proto, '_unpack', None)
     if _unpack is None:
         from ng_compiler.proto import unpack_instr as _unpack
 
+    # Find safe insertion positions (after safe opcodes)
+    safe_positions = []
+    for i, raw in enumerate(proto.code):
+        iop, _, _ = _unpack(raw)
+        if op.canonical(iop) in _SAFE_AFTER:
+            safe_positions.append(i + 1)  # insert AFTER instruction i
+
+    if not safe_positions:
+        safe_positions = [0]
+
     n_junk = max(1, int(len(proto.code) * density))
     for _ in range(n_junk):
-        pos = rng.randint(0, len(proto.code))
+        pos = rng.choice(safe_positions)
+        # Clamp to valid range
+        pos = min(pos, len(proto.code))
         junk_instr = _pack(rng.choice(junk_ops), 0, 0)
         proto.code.insert(pos, junk_instr)
+
         # Re-patch every jump whose target >= pos
         for idx in range(len(proto.code)):
             raw = proto.code[idx]
             iop, ia, ib = _unpack(raw)
             canon = op.canonical(iop)
             if canon in _JUMP_CANONS:
-                # ia is the jump target (0-based instruction index)
-                if ia >= pos and idx != pos:  # don't patch the just-inserted junk
+                if ia >= pos and idx != pos:
                     proto.code[idx] = _pack(iop, ia + 1, ib)
+
+        # Update safe_positions to account for insertion
+        safe_positions = [p + 1 if p >= pos else p for p in safe_positions]
+        safe_positions.append(pos + 1)  # the junk itself is also a safe point after
 
     for child in proto.protos:
         _inject_junk(child, op, rng, density)
