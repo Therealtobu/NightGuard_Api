@@ -1,41 +1,38 @@
-"""
-NightGuard V2 - Proto (Function Prototype)
-Instructions are packed into 32-bit integers:
-  bits 31-24 = opcode (8 bits)
-  bits 23-12 = A      (12 bits)
-  bits 11-0  = B      (12 bits)
-"""
-
-def pack_instr(op: int, a: int, b: int) -> int:
-    return ((op & 0xFF) << 24) | ((a & 0xFFF) << 12) | (b & 0xFFF)
-
-def unpack_instr(i: int):
-    op = (i >> 24) & 0xFF
-    a  = (i >> 12) & 0xFFF
-    b  =  i        & 0xFFF
-    return op, a, b
+import sys,os;sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""NightGuard V3 — Register VM Proto"""
+from ng_compiler.opcodes import pack_bx, unpack_bx, BX_BIAS
 
 class Proto:
     def __init__(self):
-        self.code:      list = []   # packed u32 instructions
-        self.consts:    list = []
-        self.protos:    list = []
-        self.nparams:   int  = 0
-        self.is_vararg: bool = False
+        self.code     = []   # list[int] packed instrs
+        self.consts   = []   # K[] mixed types
+        self.protos   = []   # nested Protos
+        self.nparams  = 0
+        self.is_vararg= False
+        self.maxreg   = 0    # max register used (set after compile)
+        self.name     = '?'
 
-    def emit(self, op, a=0, b=0) -> int:
-        idx = len(self.code)
-        self.code.append(pack_instr(op, a, b))
-        return idx
+    # ── Emit ──────────────────────────────────────────────────────────────────
+    def emit(self,instr:int)->int:
+        idx=len(self.code); self.code.append(instr); return idx
 
-    def patch(self, idx, a=None, b=None):
-        op, oa, ob = unpack_instr(self.code[idx])
-        self.code[idx] = pack_instr(op, a if a is not None else oa, b if b is not None else ob)
+    # ── Jump patching ─────────────────────────────────────────────────────────
+    def patch_sbx(self,idx:int,target_pc:int):
+        """Patch instruction at idx: sBx = target_pc-(idx+1)"""
+        op,a,_=unpack_bx(self.code[idx])
+        sbx=target_pc-(idx+1)
+        self.code[idx]=pack_bx(op,a,sbx+BX_BIAS)
 
-    def add_const(self, v) -> int:
-        for i, c in enumerate(self.consts):
-            if c == v and type(c) == type(v): return i
-        self.consts.append(v); return len(self.consts) - 1
+    def patch_bx(self,idx:int,bx:int):
+        op,a,_=unpack_bx(self.code[idx])
+        self.code[idx]=pack_bx(op,a,bx)
 
-    def add_proto(self, p) -> int:
-        idx = len(self.protos); self.protos.append(p); return idx
+    # ── Constants ─────────────────────────────────────────────────────────────
+    def add_const(self,v)->int:
+        for i,c in enumerate(self.consts):
+            if c==v and type(c)==type(v): return i
+        self.consts.append(v); return len(self.consts)-1
+
+    # ── Sub-protos ────────────────────────────────────────────────────────────
+    def add_proto(self,p)->'Proto':
+        idx=len(self.protos); self.protos.append(p); return idx
