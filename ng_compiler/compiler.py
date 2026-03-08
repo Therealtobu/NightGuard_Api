@@ -303,14 +303,37 @@ class _Ctx:
 
 
 def _inject_junk(proto, op, rng, density=0.08):
-    """Insert JUNK / FAKE no-ops at random positions (after all patches are done)."""
-    n_junk = max(1, int(len(proto.code) * density))
+    """Insert JUNK / FAKE no-ops at random positions (after all patches are done).
+    Each insertion re-patches all jump targets that point past the insertion point.
+    """
+    from ng_compiler.proto import pack_instr as _pack_default
+
+    # Canonical jump opcode names
+    _JUMP_CANONS = {'JUMP','JUMP_TRUE','JUMP_FALSE','JUMP_TRUE_POP','JUMP_FALSE_POP'}
+
     junk_ops = [op.get('JUNK'), op.get('FAKE_STACK'), op.get('FAKE_MATH')]
+
+    # Use proto's own pack/unpack if available
+    _pack   = getattr(proto, '_pack',   _pack_default)
+    _unpack = getattr(proto, '_unpack', None)
+    if _unpack is None:
+        from ng_compiler.proto import unpack_instr as _unpack
+
+    n_junk = max(1, int(len(proto.code) * density))
     for _ in range(n_junk):
         pos = rng.randint(0, len(proto.code))
-        instr = Proto().emit.__func__  # just need pack_instr
-        from ng_compiler.proto import pack_instr
-        proto.code.insert(pos, pack_instr(rng.choice(junk_ops), 0, 0))
+        junk_instr = _pack(rng.choice(junk_ops), 0, 0)
+        proto.code.insert(pos, junk_instr)
+        # Re-patch every jump whose target >= pos
+        for idx in range(len(proto.code)):
+            raw = proto.code[idx]
+            iop, ia, ib = _unpack(raw)
+            canon = op.canonical(iop)
+            if canon in _JUMP_CANONS:
+                # ia is the jump target (0-based instruction index)
+                if ia >= pos and idx != pos:  # don't patch the just-inserted junk
+                    proto.code[idx] = _pack(iop, ia + 1, ib)
+
     for child in proto.protos:
         _inject_junk(child, op, rng, density)
 
