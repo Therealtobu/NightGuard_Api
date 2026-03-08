@@ -1,102 +1,114 @@
-import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-"""NightGuard V2 - Randomized Opcode Table + Instruction Encoding Layout"""
+import sys,os;sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""NightGuard V3 — Register-VM Opcode Table
+Instruction format (32-bit):
+  OP [7:0]  A [15:8]  B [23:16]  C [31:24]
+  OP [7:0]  A [15:8]  Bx[31:16]          (wide immediate)
+  OP [7:0]  A [15:8]  sBx[31:16]         (signed, biased by 0x7FFF)
+
+RK(x): if x & 0x100 → constant K[x & 0xFF], else register R[x]
+"""
 import random
 
-_LOGICAL_OPCODES = [
-    ('LOAD_CONST', 2), ('LOAD_NIL', 1), ('LOAD_BOOL', 1),
-    ('LOAD_LOCAL', 2), ('STORE_LOCAL', 2),
-    ('LOAD_GLOBAL', 2), ('STORE_GLOBAL', 1),
-    ('NEW_TABLE', 1), ('GET_TABLE', 1), ('SET_TABLE', 1),
-    ('GET_FIELD', 2), ('SET_FIELD', 1),
-    ('CALL', 2), ('RETURN', 2),
-    ('JUMP', 2), ('JUMP_TRUE', 1), ('JUMP_FALSE', 1),
-    ('JUMP_TRUE_POP', 1), ('JUMP_FALSE_POP', 1),
-    ('POP', 1),
-    ('ADD', 2), ('ADD_ALT', 1),
-    ('SUB', 2), ('MUL', 2), ('DIV', 1), ('MOD', 1), ('POW', 1),
-    ('CONCAT', 2),
-    ('UNM', 1), ('NOT', 1), ('LEN', 1),
-    ('EQ', 2), ('NEQ', 1), ('LT', 1), ('LE', 1), ('GT', 1), ('GE', 1),
-    ('MAKE_CLOSURE', 1),
-    ('DUP', 1), ('SWAP', 1),
-    ('VARARG', 1), ('SELF', 1),
-    ('JUNK', 1), ('FAKE_STACK', 1), ('FAKE_MATH', 1),
+# (canonical, format)  format ∈ ABC | AB | ABx | AsBx | A
+_DEFS = [
+    # Loads
+    ('LOADK',    'ABx'),   # R[A] = K[Bx]
+    ('LOADNIL',  'AB'),    # R[A..A+B] = nil
+    ('LOADBOOL', 'ABC'),   # R[A] = (B!=0); if C: pc++
+    ('MOVE',     'AB'),    # R[A] = R[B]
+    # Globals (env table)
+    ('GETGLOBAL','ABx'),   # R[A] = ENV[K[Bx]]
+    ('SETGLOBAL','ABx'),   # ENV[K[Bx]] = R[A]
+    # Tables
+    ('NEWTABLE', 'A'),     # R[A] = {}
+    ('GETTABLE', 'ABC'),   # R[A] = R[B][RK(C)]
+    ('SETTABLE', 'ABC'),   # R[A][RK(B)] = RK(C)
+    ('SELF',     'ABC'),   # R[A+1]=R[B]; R[A]=R[B][RK(C)]
+    # Arithmetic  R[A] = RK(B) op RK(C)
+    ('ADD',  'ABC'), ('SUB',  'ABC'), ('MUL',  'ABC'),
+    ('DIV',  'ABC'), ('MOD',  'ABC'), ('POW',  'ABC'),
+    # Unary  R[A] = op R[B]
+    ('UNM',  'AB'), ('NOT',  'AB'), ('LEN',  'AB'),
+    # Concat R[A] = R[B] .. ... .. R[C]
+    ('CONCAT','ABC'),
+    # Jumps / compare
+    ('JMP',      'AsBx'),  # pc += sBx  (A reserved)
+    ('EQ',  'ABC'),   # if (RK(B)==RK(C)) ~= A: pc++
+    ('LT',  'ABC'),   # if (RK(B)< RK(C)) ~= A: pc++
+    ('LE',  'ABC'),   # if (RK(B)<=RK(C)) ~= A: pc++
+    ('TEST','ABC'),   # if bool(R[A])~=C: pc++
+    ('TESTSET','ABC'),# if bool(R[B])~=C: pc++ else R[A]=R[B]
+    # Calls
+    ('CALL',    'ABC'),  # R[A..A+C-2]=R[A](R[A+1..A+B-1]); B=0→vararg args; C=0→vararg rets
+    ('RETURN',  'AB'),   # return R[A..A+B-2]  B=1→return nothing
+    ('TAILCALL','ABC'),
+    ('VARARG',  'AB'),   # R[A..A+B-2]=...
+    # Closures
+    ('CLOSURE', 'ABx'),  # R[A] = closure(P[Bx])
+    # For loops
+    ('FORPREP', 'AsBx'), # R[A]-=R[A+2]; pc+=sBx
+    ('FORLOOP', 'AsBx'), # R[A]+=R[A+2]; if R[A]<=R[A+1]: R[A+3]=R[A]; pc+=sBx
+    ('TFORLOOP','ABC'),  # R[A+3..A+2+C]=R[A](R[A+1],R[A+2]); if R[A+3]≠nil: R[A+2]=R[A+3] else pc++
+    ('SETLIST', 'ABC'),  # R[A][(C-1)*FPF+i]=R[A+i] i=1..B
+    # Junk no-ops (obfuscation)
+    ('JUNK',  'ABC'), ('JUNK2', 'ABC'), ('JUNK3', 'ABC'),
 ]
 
-_ALIAS_MAP = {'ADD_ALT': 'ADD'}
-_FAKE_OPS  = {'JUNK', 'FAKE_STACK', 'FAKE_MATH'}
+_FAKE = {'JUNK','JUNK2','JUNK3'}
 
-# Possible instruction encoding layouts
-# Each layout: (op_shift, op_bits, a_shift, a_bits, b_shift, b_bits)
-_LAYOUTS = [
-    (24, 8, 12, 12,  0, 12),   # default: op[31:24] A[23:12] B[11:0]
-    (24, 8,  0, 12, 12, 12),   # swap A and B positions
-    (16, 8, 24,  8,  0, 16),   # op in middle
-    (20, 8,  8, 12,  0,  8),   # compact
-]
+# Bit widths
+OP_W=8; A_W=8; B_W=8; C_W=8
+BX_W=16; BX_BIAS=0x7FFF
+RK_BIT=0x100  # bit that marks RK as constant
+
+def pack(op,a,b,c):   return (c&0xFF)<<24|(b&0xFF)<<16|(a&0xFF)<<8|(op&0xFF)
+def pack_bx(op,a,bx): return (bx&0xFFFF)<<16|(a&0xFF)<<8|(op&0xFF)
+def unpack(i):
+    op=i&0xFF; a=(i>>8)&0xFF; b=(i>>16)&0xFF; c=(i>>24)&0xFF
+    return op,a,b,c
+def unpack_bx(i):
+    op=i&0xFF; a=(i>>8)&0xFF; bx=(i>>16)&0xFFFF
+    return op,a,bx
+def get_sbx(i):
+    _,_,bx=unpack_bx(i); return bx-BX_BIAS
+def is_rk(x):  return bool(x&RK_BIT)
+def rk(k):     return k|RK_BIT   # encode const index as RK
 
 class Opcodes:
-    def __init__(self, seed=None):
-        rng = random.Random(seed)
+    def __init__(self,seed=None):
+        rng=random.Random(seed)
+        names=[d[0] for d in _DEFS]
+        ids=list(range(len(names))); rng.shuffle(ids)
+        self._n2i={n:ids[i] for i,n in enumerate(names)}
+        self._i2n={ids[i]:n for i,n in enumerate(names)}
+        self._i2f={ids[i]:_DEFS[i][1] for i in range(len(names))}
+        self._rng=rng
+        self.seed=seed
 
-        # Build opcode table
-        entries = []
-        for name, n_aliases in _LOGICAL_OPCODES:
-            canonical = _ALIAS_MAP.get(name, name)
-            entries.append((canonical, name))
-            for i in range(1, n_aliases):
-                entries.append((canonical, f'{name}_V{i}'))
+    def id(self,name:str)->int:
+        if name not in self._n2i: raise KeyError(f'Unknown opcode: {name}')
+        return self._n2i[name]
+    def name(self,op_id:int)->str: return self._i2n.get(op_id,'?')
+    def fmt(self,op_id:int)->str:  return self._i2f.get(op_id,'ABC')
+    def is_fake(self,op_id:int)->bool: return self._i2n.get(op_id,'') in _FAKE
+    def fake_ids(self): return [self._n2i[n] for n in _FAKE]
+    def all_names(self): return list(self._n2i.keys())
 
-        rng.shuffle(entries)
-        self._name2val  = {}
-        self._val2canon = {}
-        for i, (canon, alias) in enumerate(entries):
-            self._name2val[alias]  = i
-            self._val2canon[i]     = canon
+    # ── Pack helpers ──────────────────────────────────────────────────────────
+    def mk(self,nm,a=0,b=0,c=0):   return pack(self.id(nm),a,b,c)
+    def mk_bx(self,nm,a,bx):       return pack_bx(self.id(nm),a,bx)
+    def mk_sbx(self,nm,a,sbx):     return pack_bx(self.id(nm),a,sbx+BX_BIAS)
 
-        self._canon2vals = {}
-        for alias, val in self._name2val.items():
-            canon = self._val2canon[val]
-            self._canon2vals.setdefault(canon, []).append(val)
+    def junk(self,rng=None):
+        r=rng or self._rng
+        jid=r.choice(self.fake_ids())
+        return pack(jid,r.randint(0,15),r.randint(0,15),r.randint(0,15))
 
-        self._rng = rng
-
-        # Pick random instruction encoding layout for this build
-        layout = rng.choice(_LAYOUTS)
-        op_shift, op_bits, a_shift, a_bits, b_shift, b_bits = layout
-        op_mask = (1 << op_bits) - 1
-        a_mask  = (1 << a_bits)  - 1
-        b_mask  = (1 << b_bits)  - 1
-        self.__dict__['layout']       = layout  # (op_shift, op_bits, a_shift, a_bits, b_shift, b_bits)
-
-        def _pack(op, a, b):
-            return ((op & op_mask) << op_shift) | ((a & a_mask) << a_shift) | (b & b_mask)
-        def _unpack(i):
-            return (i >> op_shift) & op_mask, (i >> a_shift) & a_mask, i & b_mask
-
-        self.__dict__['pack_instr']   = _pack
-        self.__dict__['unpack_instr'] = _unpack
-
-    def get(self, name: str) -> int:
-        canon = _ALIAS_MAP.get(name, name)
-        vals  = self._canon2vals.get(canon) or self._canon2vals.get(name)
-        if vals is None: raise KeyError(f"Unknown opcode: {name}")
-        return self._rng.choice(vals)
-
-    def all_values(self, name: str) -> list:
-        canon = _ALIAS_MAP.get(name, name)
-        return list(self._canon2vals.get(canon, []))
-
-    def canonical(self, val: int) -> str:
-        return self._val2canon.get(val, 'UNKNOWN')
-
-    def is_fake(self, val: int) -> bool:
-        return self.canonical(val) in _FAKE_OPS
-
-    def all(self) -> dict:
-        return dict(self._name2val)
-
-    def __getattr__(self, name):
-        if name.startswith('_') or name in ('pack_instr', 'unpack_instr', 'layout'):
-            raise AttributeError(name)
-        return self.get(name)
+    # ── Decode helpers ────────────────────────────────────────────────────────
+    def decode(self,instr):
+        """Return (canon_name, op, a, b, c, bx, sbx)"""
+        op,a,b,c=unpack(instr)
+        _,_,bx=unpack_bx(instr)
+        sbx=bx-BX_BIAS
+        nm=self.name(op)
+        return nm,op,a,b,c,bx,sbx
