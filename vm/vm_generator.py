@@ -60,16 +60,16 @@ if _fn then _fn(A,B)end
 end
 __I_R6__=st[sp] or 0;__I_R7__=__I_GC__%128
 end
--- yield every 200 instructions for lazy execution (Roblox safe)
-if pc%200==0 then coroutine.yield()end
+-- yield every 200 instructions only in Roblox async context
+if (task or delay) and pc%200==0 then coroutine.yield()end
 until pc>#cd
 end)
 -- step coroutine until done
 local function step()
 local ok,err=coroutine.resume(_co)
-if not ok then return end
+if not ok then error(err,2)end
 if coroutine.status(_co)~="dead" then
-if task then task.defer(step)else delay(0,step)end
+if task then task.defer(step)elseif delay then delay(0,step)end
 end
 end
 step()
