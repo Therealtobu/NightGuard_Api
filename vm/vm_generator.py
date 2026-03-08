@@ -1,187 +1,415 @@
 import sys,os;sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 """NightGuard V3 — Register VM Generator
-Full register-based VM (no stack). Each instruction: op|A|B|C or op|A|Bx.
-RK(x): x&0x100 → K[x&0xFF], else R[x].
+Full register-based VM. Instruction format: op|A|B|C (each 8-bit) or op|A|Bx (16-bit).
+RK(x): x >= 256 → K[x-256], else R[x].
+
+Generated Lua is intentionally verbose — multiline handlers, fake local vars,
+anti-analysis noise — making static analysis difficult.
 """
-import random,re
+import random, re
 
 # ─────────────────────────────────────────────────────────────────────────────
-# INNER VM template — placeholders: __IX_* → random names per build
+# INNER VM template
+# Placeholders __IX_*__ → random obfuscated names per build
+# __IX_OPENC__   → encrypted opcode→dispatch_id table
+# __IX_DT_DEF__  → dispatch table definition (injected before execute loop)
 # ─────────────────────────────────────────────────────────────────────────────
 _INNER = r"""
 local __IX_XOR__
-if bit then __IX_XOR__=bit.bxor
-elseif bit32 then __IX_XOR__=bit32.bxor
-else __IX_XOR__=function(a,b)local r,m=0,1;while a>0 or b>0 do local x,y=a%2,b%2;if x~=y then r=r+m end;a,b,m=math.floor(a/2),math.floor(b/2),m*2 end;return r end
+if bit then
+  __IX_XOR__ = bit.bxor
+elseif bit32 then
+  __IX_XOR__ = bit32.bxor
+else
+  __IX_XOR__ = function(a, b)
+    local r, m = 0, 1
+    while a > 0 or b > 0 do
+      local x, y = a % 2, b % 2
+      if x ~= y then r = r + m end
+      a, b, m = math.floor(a / 2), math.floor(b / 2), m * 2
+    end
+    return r
+  end
 end
-local function __IX_DS__(e,sd,st,sk)
-  local d={};for i=1,#e do d[i]=(e[i]-(sk or 0)*i%256+256)%256 end
-  local k=sd;local c={}
-  for i=1,#d do c[i]=string.char(__IX_XOR__(d[i],k));k=(k*st+d[i])%256;if k==0 then k=1 end end
+
+local function __IX_DS__(e, sd, st, sk)
+  local d = {}
+  for i = 1, #e do
+    d[i] = (e[i] - (sk or 0) * i % 256 + 256) % 256
+  end
+  local k = sd
+  local c = {}
+  for i = 1, #d do
+    c[i] = string.char(__IX_XOR__(d[i], k))
+    k = (k * st + d[i]) % 256
+    if k == 0 then k = 1 end
+  end
   return table.concat(c)
 end
-local function __IX_DSC__(e,sd,st,sk,chunks,order)
-  local sorted={}
-  if order then for i=1,#order do sorted[order[i]+1]=chunks[i] end
-  else sorted=chunks end
-  local raw={};local ci=1
-  for i=1,#sorted do local ch=sorted[i];local s,l=ch[1],ch[2];for j=s+1,s+l do raw[ci]=e[j];ci=ci+1 end end
-  return __IX_DS__(raw,sd,st,sk)
-end
-local function __IX_RDR__(b)
-  local p=1;local R={}
-  function R.u8()local v=b[p];p=p+1;return v end
-  function R.u32()local a,b2,c,d=b[p],b[p+1],b[p+2],b[p+3];p=p+4;return a+b2*256+c*65536+d*16777216 end
-  function R.f64()local B={b[p],b[p+1],b[p+2],b[p+3],b[p+4],b[p+5],b[p+6],b[p+7]};p=p+8
-    local s=B[8]>=128 and -1 or 1;local e2=(B[8]%128)*16+math.floor(B[7]/16)
-    local m=(B[7]%16)*2^48+B[6]*2^40+B[5]*2^32+B[4]*2^24+B[3]*2^16+B[2]*2^8+B[1]
-    if e2==0 then return s*math.ldexp(m,-1074)
-    elseif e2==2047 then return s*(1/0)
-    else return s*math.ldexp(m+2^52,e2-1075) end
+
+local function __IX_DSC__(e, sd, st, sk, chunks, order)
+  local sorted = {}
+  if order then
+    for i = 1, #order do
+      sorted[order[i] + 1] = chunks[i]
+    end
+  else
+    sorted = chunks
   end
-  function R.str()local n=R.u32();local c={};for i=1,n do c[i]=string.char(b[p]);p=p+1 end;return table.concat(c) end
-  function R.blk()local n=R.u32();local t={};for i=1,n do t[i]=b[p];p=p+1 end;return t end
+  local raw = {}
+  local ci = 1
+  for i = 1, #sorted do
+    local ch = sorted[i]
+    local s, l = ch[1], ch[2]
+    for j = s + 1, s + l do
+      raw[ci] = e[j]
+      ci = ci + 1
+    end
+  end
+  return __IX_DS__(raw, sd, st, sk)
+end
+
+local function __IX_RDR__(b)
+  local p = 1
+  local R = {}
+  function R.u8()
+    local v = b[p]; p = p + 1; return v
+  end
+  function R.u32()
+    local a, b2, c, d = b[p], b[p+1], b[p+2], b[p+3]
+    p = p + 4
+    return a + b2*256 + c*65536 + d*16777216
+  end
+  function R.f64()
+    local B = {b[p],b[p+1],b[p+2],b[p+3],b[p+4],b[p+5],b[p+6],b[p+7]}
+    p = p + 8
+    local s = B[8] >= 128 and -1 or 1
+    local e2 = (B[8] % 128) * 16 + math.floor(B[7] / 16)
+    local m = (B[7]%16)*2^48 + B[6]*2^40 + B[5]*2^32 + B[4]*2^24 + B[3]*2^16 + B[2]*2^8 + B[1]
+    if e2 == 0 then
+      return s * math.ldexp(m, -1074)
+    elseif e2 == 2047 then
+      return s * (1/0)
+    else
+      return s * math.ldexp(m + 2^52, e2 - 1075)
+    end
+  end
+  function R.str()
+    local n = R.u32()
+    local c = {}
+    for i = 1, n do
+      c[i] = string.char(b[p]); p = p + 1
+    end
+    return table.concat(c)
+  end
+  function R.blk()
+    local n = R.u32()
+    local t = {}
+    for i = 1, n do
+      t[i] = b[p]; p = p + 1
+    end
+    return t
+  end
   return R
 end
+
 local function __IX_LDP__(R)
-  local p={};p.np=R.u8();p.va=R.u8()==1;p.mr=R.u8()
-  local nc=R.u32();p.code={};for i=1,nc do p.code[i]=R.u32() end
-  local nk=R.u32();p.k={}
-  for i=1,nk do
-    local t=R.u8()
-    if t==0 then p.k[i]=nil
-    elseif t==1 then p.k[i]=R.u8()~=0
-    elseif t==2 then p.k[i]=R.f64()
-    elseif t==3 then p.k[i]=R.str()
-    elseif t==4 then
-      local sd=R.u8();local st=R.u8();local sk=R.u8()
-      local n=R.u32();local e={};for j=1,n do e[j]=R.u8() end
-      p.k[i]=__IX_DS__(e,sd,st,sk)
-    elseif t==5 then
-      local sd=R.u8();local st=R.u8();local sk=R.u8()
-      local n=R.u32();local e={};for j=1,n do e[j]=R.u8() end
-      local nc2=R.u8();local ch={};for j=1,nc2 do local s=R.u32();local l=R.u32();ch[j]={s,l} end
-      local nn=R.u8();for j=1,nn do R.u32();R.u32() end
-      local no=R.u8();local ord={};for j=1,no do ord[j]=R.u8() end
-      p.k[i]=__IX_DSC__(e,sd,st,sk,ch,ord)
+  local p = {}
+  p.np = R.u8()
+  p.va = R.u8() == 1
+  p.mr = R.u8()
+  local nc = R.u32()
+  p.code = {}
+  for i = 1, nc do
+    p.code[i] = R.u32()
+  end
+  local nk = R.u32()
+  p.k = {}
+  for i = 1, nk do
+    local t = R.u8()
+    if t == 0 then
+      p.k[i] = nil
+    elseif t == 1 then
+      p.k[i] = R.u8() ~= 0
+    elseif t == 2 then
+      p.k[i] = R.f64()
+    elseif t == 3 then
+      p.k[i] = R.str()
+    elseif t == 4 then
+      local sd = R.u8(); local st = R.u8(); local sk = R.u8()
+      local n = R.u32()
+      local e = {}
+      for j = 1, n do e[j] = R.u8() end
+      p.k[i] = __IX_DS__(e, sd, st, sk)
+    elseif t == 5 then
+      local sd = R.u8(); local st = R.u8(); local sk = R.u8()
+      local n = R.u32()
+      local e = {}
+      for j = 1, n do e[j] = R.u8() end
+      local nc2 = R.u8()
+      local ch = {}
+      for j = 1, nc2 do
+        local s = R.u32(); local l = R.u32()
+        ch[j] = {s, l}
+      end
+      local nn = R.u8()
+      for j = 1, nn do R.u32(); R.u32() end
+      local no = R.u8()
+      local ord = {}
+      for j = 1, no do ord[j] = R.u8() end
+      p.k[i] = __IX_DSC__(e, sd, st, sk, ch, ord)
     end
   end
-  local np=R.u32();p.pr={}
-  for i=1,np do local bl=R.blk();p.pr[i]=__IX_LDP__(__IX_RDR__(bl)) end
+  local np = R.u32()
+  p.pr = {}
+  for i = 1, np do
+    local bl = R.blk()
+    p.pr[i] = __IX_LDP__(__IX_RDR__(bl))
+  end
   return p
 end
+
 __IX_OPENC__
-local function __IX_EXE__(proto,env,vararg)
-  local R={};for i=0,proto.mr+4 do R[i]=nil end
-  local K=proto.k;local P=proto.pr;local CD=proto.code
-  local pc=1;local DT=__IX_DT__
-  local __IX_T1__,__IX_T2__,__IX_T3__=0,0,0
-  local function RK(x) if x>=256 then return K[(x-256)+1] else return R[x] end end
-  while pc<=#CD do
-    local ins=CD[pc];pc=pc+1
-    local op=ins&0xFF;local a=(ins>>8)&0xFF
-    local b=(ins>>16)&0xFF;local c=(ins>>24)&0xFF
-    local bx=(ins>>16)&0xFFFF;local sbx=bx-32767
-    __IX_T1__=__IX_T2__;__IX_T2__=__IX_T3__;__IX_T3__=op
-    local nm=__IX_OP__[op]
-    if nm==nil then
-    elseif nm==-1 then
-      local n=b-1;if n<0 then n=#vararg end
-      local rv={};if n>0 then for i=1,n do rv[i]=vararg[i] end end
-      if b==1 then return end
-      return table.unpack(rv,1,b-1)
+
+local function __IX_EXE__(proto, env, vararg)
+  local R = {}
+  for i = 0, proto.mr + 8 do R[i] = nil end
+  local K  = proto.k
+  local P  = proto.pr
+  local CD = proto.code
+  local pc = 1
+
+  -- Anti-analysis: fake execution state vars that look like VM internals
+  local __IX_FA__ = 0x5A3C
+  local __IX_FB__ = 0
+  local __IX_FC__ = 0
+  local __IX_FD__ = false
+
+  local function RK(x)
+    if x >= 256 then
+      return K[(x - 256) + 1]
     else
-      local h=DT[nm];if h then h(a,b,c,bx,sbx) end
+      return R[x]
     end
+  end
+
+__IX_DT_DEF__
+
+  while pc <= #CD do
+    local ins = CD[pc]; pc = pc + 1
+    local op  = ins & 0xFF
+    local a   = (ins >> 8)  & 0xFF
+    local b   = (ins >> 16) & 0xFF
+    local c   = (ins >> 24) & 0xFF
+    local bx  = (ins >> 16) & 0xFFFF
+    local sbx = bx - 32767
+
+    -- Fake state mutation (anti-tracing)
+    __IX_FA__ = (__IX_FA__ * 1103515245 + 12345) % 0x80000000
+    __IX_FB__ = __IX_FA__ % 256
+    __IX_FC__ = __IX_FB__ ~ op
+
+    local nm = __IX_OP__[op]
+    if op == __IX_RET_ID__ then
+      -- RETURN: handled inline so we can actually return from this function
+      local n = b - 1
+      if n < 0 then n = 0 end
+      if b == 1 then return end
+      local rv = {}
+      for i = 0, n - 1 do rv[i+1] = R[a + i] end
+      return table.unpack(rv, 1, n)
+    elseif nm ~= nil then
+      local h = __IX_DT__[nm]
+      if h then
+        __IX_FD__ = h(a, b, c, bx, sbx)
+      end
+    end
+
+    __IX_FB__ = R[0] or 0
   end
 end
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
-# OUTER VM — decrypts inner and runs it
+# OUTER VM template
 # ─────────────────────────────────────────────────────────────────────────────
 _OUTER = r"""
 local _N_vm
 local __OX_XOR__
-if bit then __OX_XOR__=bit.bxor
-elseif bit32 then __OX_XOR__=bit32.bxor
-else __OX_XOR__=function(a,b)local r,m=0,1;while a>0 or b>0 do local x,y=a%2,b%2;if x~=y then r=r+m end;a,b,m=math.floor(a/2),math.floor(b/2),m*2 end;return r end
+if bit then
+  __OX_XOR__ = bit.bxor
+elseif bit32 then
+  __OX_XOR__ = bit32.bxor
+else
+  __OX_XOR__ = function(a, b)
+    local r, m = 0, 1
+    while a > 0 or b > 0 do
+      local x, y = a % 2, b % 2
+      if x ~= y then r = r + m end
+      a, b, m = math.floor(a / 2), math.floor(b / 2), m * 2
+    end
+    return r
+  end
 end
+
 local function __OX_CHK__()
   if debug then
-    if type(debug.sethook)=="function" then
-      local ok,h=pcall(debug.gethook)
-      if ok and h~=nil then local t={};repeat t[#t+1]=0 until #t>5e4 end
+    if type(debug.sethook) == "function" then
+      local ok, h = pcall(debug.gethook)
+      if ok and h ~= nil then
+        local t = {}
+        repeat t[#t+1] = 0 until #t > 5e4
+      end
     end
-    if type(debug.getinfo)~="function" then local t={};repeat t[#t+1]=0 until #t>5e4 end
+    if type(debug.getinfo) ~= "function" then
+      local t = {}
+      repeat t[#t+1] = 0 until #t > 5e4
+    end
   end
-  if type(math.floor)~="function" or type(pcall)~="function" then local t={};repeat t[#t+1]=0 until #t>5e4 end
+  if type(math.floor) ~= "function" or type(pcall) ~= "function" then
+    local t = {}
+    repeat t[#t+1] = 0 until #t > 5e4
+  end
 end
 __OX_CHK__()
-local function __OX_DEC__(bc,key,sd)
-  local kl=#key;local tmp={}
-  for i=1,#bc do tmp[i]=__OX_XOR__(bc[i],key[((i-1)%kl)+1]) end
-  local out={};local k=sd
-  for i=1,#tmp do local e=tmp[i];out[i]=__OX_XOR__(e,k);k=(k*13+e)%256;if k==0 then k=1 end end
+
+local function __OX_DEC__(bc, key, sd)
+  local kl = #key
+  local tmp = {}
+  for i = 1, #bc do
+    tmp[i] = __OX_XOR__(bc[i], key[((i-1) % kl) + 1])
+  end
+  local out = {}
+  local k = sd
+  for i = 1, #tmp do
+    local e = tmp[i]
+    out[i] = __OX_XOR__(e, k)
+    k = (k * 13 + e) % 256
+    if k == 0 then k = 1 end
+  end
   return out
 end
+
 local function __OX_RDR__(b)
-  local p=1;local R={}
-  function R.u8()local v=b[p];p=p+1;return v end
-  function R.u32()local a,b2,c,d=b[p],b[p+1],b[p+2],b[p+3];p=p+4;return a+b2*256+c*65536+d*16777216 end
-  function R.f64()local B={b[p],b[p+1],b[p+2],b[p+3],b[p+4],b[p+5],b[p+6],b[p+7]};p=p+8
-    local s=B[8]>=128 and -1 or 1;local e2=(B[8]%128)*16+math.floor(B[7]/16)
-    local m=(B[7]%16)*2^48+B[6]*2^40+B[5]*2^32+B[4]*2^24+B[3]*2^16+B[2]*2^8+B[1]
-    if e2==0 then return s*math.ldexp(m,-1074)
-    elseif e2==2047 then return s*(1/0)
-    else return s*math.ldexp(m+2^52,e2-1075) end
+  local p = 1
+  local R = {}
+  function R.u8()
+    local v = b[p]; p = p + 1; return v
   end
-  function R.str()local n=R.u32();local c={};for i=1,n do c[i]=string.char(b[p]);p=p+1 end;return table.concat(c) end
-  function R.blk()local n=R.u32();local t={};for i=1,n do t[i]=b[p];p=p+1 end;return t end
-  return R
-end
-local function __OX_LDP__(R)
-  local p={};p.np=R.u8();p.va=R.u8()==1;p.mr=R.u8()
-  local nc=R.u32();p.code={};for i=1,nc do p.code[i]=R.u32() end
-  local nk=R.u32();p.k={}
-  for i=1,nk do
-    local t=R.u8()
-    if t==0 then p.k[i]=nil
-    elseif t==1 then p.k[i]=R.u8()~=0
-    elseif t==2 then p.k[i]=R.f64()
-    elseif t==3 then p.k[i]=R.str()
-    elseif t==4 then
-      local sd=R.u8();local st=R.u8();local sk=R.u8()
-      local n=R.u32();local e={};for j=1,n do e[j]=R.u8() end
-      p.k[i]=__IX_DS_NAME__(e,sd,st,sk)
-    elseif t==5 then
-      local sd=R.u8();local st=R.u8();local sk=R.u8()
-      local n=R.u32();local e={};for j=1,n do e[j]=R.u8() end
-      local nc2=R.u8();local ch={};for j=1,nc2 do local s=R.u32();local l=R.u32();ch[j]={s,l} end
-      local nn=R.u8();for j=1,nn do R.u32();R.u32() end
-      local no=R.u8();local ord={};for j=1,no do ord[j]=R.u8() end
-      p.k[i]=__IX_DSC_NAME__(e,sd,st,sk,ch,ord)
+  function R.u32()
+    local a, b2, c, d = b[p], b[p+1], b[p+2], b[p+3]
+    p = p + 4
+    return a + b2*256 + c*65536 + d*16777216
+  end
+  function R.f64()
+    local B = {b[p],b[p+1],b[p+2],b[p+3],b[p+4],b[p+5],b[p+6],b[p+7]}
+    p = p + 8
+    local s  = B[8] >= 128 and -1 or 1
+    local e2 = (B[8] % 128) * 16 + math.floor(B[7] / 16)
+    local m  = (B[7]%16)*2^48 + B[6]*2^40 + B[5]*2^32 + B[4]*2^24 + B[3]*2^16 + B[2]*2^8 + B[1]
+    if e2 == 0 then
+      return s * math.ldexp(m, -1074)
+    elseif e2 == 2047 then
+      return s * (1/0)
+    else
+      return s * math.ldexp(m + 2^52, e2 - 1075)
     end
   end
-  local np=R.u32();p.pr={}
-  for i=1,np do local bl=R.blk();p.pr[i]=__OX_LDP__(bl) end
+  function R.str()
+    local n = R.u32()
+    local c = {}
+    for i = 1, n do
+      c[i] = string.char(b[p]); p = p + 1
+    end
+    return table.concat(c)
+  end
+  function R.blk()
+    local n = R.u32()
+    local t = {}
+    for i = 1, n do
+      t[i] = b[p]; p = p + 1
+    end
+    return t
+  end
+  return R
+end
+
+local function __OX_LDP__(R)
+  local p = {}
+  p.np = R.u8()
+  p.va = R.u8() == 1
+  p.mr = R.u8()
+  local nc = R.u32()
+  p.code = {}
+  for i = 1, nc do
+    p.code[i] = R.u32()
+  end
+  local nk = R.u32()
+  p.k = {}
+  for i = 1, nk do
+    local t = R.u8()
+    if t == 0 then
+      p.k[i] = nil
+    elseif t == 1 then
+      p.k[i] = R.u8() ~= 0
+    elseif t == 2 then
+      p.k[i] = R.f64()
+    elseif t == 3 then
+      p.k[i] = R.str()
+    elseif t == 4 then
+      local sd = R.u8(); local st = R.u8(); local sk = R.u8()
+      local n = R.u32()
+      local e = {}
+      for j = 1, n do e[j] = R.u8() end
+      p.k[i] = __IX_DS_REF__(e, sd, st, sk)
+    elseif t == 5 then
+      local sd = R.u8(); local st = R.u8(); local sk = R.u8()
+      local n = R.u32()
+      local e = {}
+      for j = 1, n do e[j] = R.u8() end
+      local nc2 = R.u8()
+      local ch = {}
+      for j = 1, nc2 do
+        local s = R.u32(); local l = R.u32()
+        ch[j] = {s, l}
+      end
+      local nn = R.u8()
+      for j = 1, nn do R.u32(); R.u32() end
+      local no = R.u8()
+      local ord = {}
+      for j = 1, no do ord[j] = R.u8() end
+      p.k[i] = __IX_DSC_REF__(e, sd, st, sk, ch, ord)
+    end
+  end
+  local np = R.u32()
+  p.pr = {}
+  for i = 1, np do
+    local bl = R.blk()
+    p.pr[i] = __OX_LDP__(__OX_RDR__(bl))
+  end
   return p
 end
-_N_vm=function(bc1,bc2,bc3,key,seed)
-  local bc={};for _,seg in ipairs({bc1,bc2,bc3}) do for i=1,#seg do bc[#bc+1]=seg[i] end end
-  local dec=__OX_DEC__(bc,key,seed)
-  local R=__OX_RDR__(dec)
-  local proto=__OX_LDP__(R)
-  local env=getfenv and getfenv(0) or _G
-  __IX_EXE_NAME__(proto,env,{})
+
+_N_vm = function(bc1, bc2, bc3, key, seed)
+  local bc = {}
+  for _, seg in ipairs({bc1, bc2, bc3}) do
+    for i = 1, #seg do bc[#bc+1] = seg[i] end
+  end
+  local dec   = __OX_DEC__(bc, key, seed)
+  local rdr   = __OX_RDR__(dec)
+  local proto = __OX_LDP__(rdr)
+  local env   = getfenv and getfenv(0) or _G
+  __IX_EXE_REF__(proto, env, {})
 end
 """
 
-_INNER_PH=['__IX_XOR__','__IX_DS__','__IX_DSC__','__IX_RDR__','__IX_LDP__',
-           '__IX_OPENC__','__IX_EXE__','__IX_OP__','__IX_DT__','__IX_T1__','__IX_T2__','__IX_T3__']
-_OUTER_PH=['__OX_XOR__','__OX_CHK__','__OX_DEC__','__OX_RDR__','__OX_LDP__']
+_INNER_PH = [
+    '__IX_XOR__','__IX_DS__','__IX_DSC__','__IX_RDR__','__IX_LDP__',
+    '__IX_EXE__','__IX_OP__','__IX_DT__',
+    '__IX_FA__','__IX_FB__','__IX_FC__','__IX_FD__',
+]
+_OUTER_PH = ['__OX_XOR__','__OX_CHK__','__OX_DEC__','__OX_RDR__','__OX_LDP__']
 
-# Canonical op names VM needs to handle (matches opcodes.py _DEFS)
 _HANDLED = [
     'LOADK','LOADNIL','LOADBOOL','MOVE',
     'GETGLOBAL','SETGLOBAL',
@@ -189,150 +417,398 @@ _HANDLED = [
     'ADD','SUB','MUL','DIV','MOD','POW',
     'UNM','NOT','LEN','CONCAT',
     'JMP','EQ','LT','LE','TEST','TESTSET',
-    'CALL','TAILCALL','RETURN','VARARG',
+    'CALL','TAILCALL','VARARG',
     'CLOSURE','FORPREP','FORLOOP','TFORLOOP','SETLIST',
 ]
 
-def _fresh(rng,used):
-    chars='lIO01'
+def _fresh(rng, used):
+    chars = 'lIO01'
     while True:
-        v='_'+rng.choice('lIO')+''.join(rng.choices(chars,k=rng.randint(8,13)))
-        if v not in used: used.add(v); return v
+        v = '_' + rng.choice('lIO') + ''.join(rng.choices(chars, k=rng.randint(8,13)))
+        if v not in used:
+            used.add(v); return v
 
-def _build_op_table(tbl,xor_fn,opcodes,dispatch_map,rng):
-    """Emit encrypted op→dispatch_id table decoded at runtime."""
-    raw={}
+def _build_op_table(tbl, xor_fn, opcodes, dispatch_map, rng):
+    raw = {}
     for nm in _HANDLED:
         try:
-            oid=opcodes.id(nm)
-            raw[oid]=dispatch_map[nm]
-        except KeyError: pass
-    if not raw: return f'local {tbl}={{}}'
-    xk=rng.randint(1,255)
-    mx=max(raw)
-    enc=[(raw.get(i,0)^xk)&0xFFFF for i in range(mx+1)]
-    arr='{'+','.join(str(x) for x in enc)+'}'
-    return (f'local {tbl}={{}};do local _e={arr};local _k={xk};'
-            f'for _i=1,#_e do {tbl}[_i-1]={xor_fn}(_e[_i],_k) end end')
+            oid = opcodes.id(nm)
+            raw[oid] = dispatch_map[nm]
+        except KeyError:
+            pass
+    if not raw:
+        return f'local {tbl} = {{}}'
+    xk  = rng.randint(1, 255)
+    mx  = max(raw)
+    enc = [(raw.get(i, 0) ^ xk) & 0xFFFF for i in range(mx + 1)]
+    arr = '{' + ','.join(str(x) for x in enc) + '}'
+    return (
+        f'local {tbl} = {{}}\n'
+        f'do\n'
+        f'  local _e = {arr}\n'
+        f'  local _k = {xk}\n'
+        f'  for _i = 1, #_e do\n'
+        f'    {tbl}[_i - 1] = {xor_fn}(_e[_i], _k)\n'
+        f'  end\n'
+        f'end'
+    )
 
-def _build_dispatch(dt,dm,imap,opcodes):
-    """Build register VM dispatch table. Each handler: function(a,b,c,bx,sbx)."""
-    exe=imap['__IX_EXE__']
-    lines=[f'local {dt}={{']
-    def h(nm,body): lines.append(f'[{dm[nm]}]=function(a,b,c,bx,sbx) {body} end,')
+def _noise(rng, nv):
+    """Generate a fake assignment line using a noise var name."""
+    ops = [
+        f'local {nv} = 0',
+        f'local {nv} = false',
+        f'local {nv} = nil',
+        f'local {nv} = -1',
+    ]
+    return rng.choice(ops)
 
-    h('LOADK',       'R[a]=K[bx+1]')
-    h('LOADNIL',     'for i=a,a+b do R[i]=nil end')
-    h('LOADBOOL',    'R[a]=(b~=0);if c~=0 then pc=pc+1 end')
-    h('MOVE',        'R[a]=R[b]')
-    h('GETGLOBAL',   'R[a]=env[K[bx+1]]')
-    h('SETGLOBAL',   'env[K[bx+1]]=R[a]')
-    h('NEWTABLE',    'R[a]={}')
-    h('GETTABLE',    'R[a]=R[b][RK(c)]')
-    h('SETTABLE',    'R[a][RK(b)]=RK(c)')
-    h('SELF',        'R[a+1]=R[b];R[a]=R[b][RK(c)]')
-    h('ADD',         'R[a]=RK(b)+RK(c)')
-    h('SUB',         'R[a]=RK(b)-RK(c)')
-    h('MUL',         'R[a]=RK(b)*RK(c)')
-    h('DIV',         'R[a]=RK(b)/RK(c)')
-    h('MOD',         'R[a]=RK(b)%RK(c)')
-    h('POW',         'R[a]=RK(b)^RK(c)')
-    h('UNM',         'R[a]=-R[b]')
-    h('NOT',         'R[a]=not R[b]')
-    h('LEN',         'R[a]=#R[b]')
-    h('CONCAT',      'local s=tostring(R[b]);for i=b+1,c do s=s..tostring(R[i]) end;R[a]=s')
-    h('JMP',         'pc=pc+sbx')
-    h('EQ',          'if (RK(b)==RK(c))~=(a~=0) then pc=pc+1 end')
-    h('LT',          'if (RK(b)<RK(c))~=(a~=0) then pc=pc+1 end')
-    h('LE',          'if (RK(b)<=RK(c))~=(a~=0) then pc=pc+1 end')
-    h('TEST',        'if (not not R[a])~=(c~=0) then pc=pc+1 end')
-    h('TESTSET',     'if (not not R[b])~=(c~=0) then pc=pc+1 else R[a]=R[b] end')
-    h('CALL',
-        'local fn=R[a];local args={};local na=b-1;'
-        'if na<0 then na=0 end;'  # vararg case simplified
-        'for i=1,na do args[i]=R[a+i] end;'
-        'local nr=c-1;'
-        'if nr<0 then nr=0 end;'
-        'local ret={fn(table.unpack(args))};'
-        'for i=0,nr-1 do R[a+i]=ret[i+1] end')
-    h('TAILCALL',
-        'local fn=R[a];local args={};for i=1,b-1 do args[i]=R[a+i] end;'
-        'return fn(table.unpack(args))')
-    h('VARARG',
-        'local n=b-1;if n<0 then n=#vararg end;'
-        'for i=0,n-1 do R[a+i]=vararg[i+1] end')
-    h('CLOSURE',
-        f'local pp=P[bx+1];'
-        f'R[a]=function(...)local va={{...}};local lva={{}};'
-        f'for i=1,pp.np do lva[i]=va[i] end;'
-        f'local vargs={{}};if pp.va then for i=pp.np+1,#va do vargs[#vargs+1]=va[i] end end;'
-        f'return {exe}(pp,env,vargs) end')
-    h('FORPREP',
-        'R[a]=R[a]-R[a+2];pc=pc+sbx')
-    h('FORLOOP',
-        'R[a]=R[a]+R[a+2];'
-        'if R[a+2]>0 and R[a]<=R[a+1] then R[a+3]=R[a];pc=pc+sbx '
-        'elseif R[a+2]<=0 and R[a]>=R[a+1] then R[a+3]=R[a];pc=pc+sbx end')
-    h('TFORLOOP',
-        'local fn=R[a];local st=R[a+1];local ct=R[a+2];'
-        'local res={fn(st,ct)};'
-        'if res[1]~=nil then R[a+2]=res[1];for i=1,c do R[a+2+i]=res[i] end '
-        'else pc=pc+1 end')
-    h('SETLIST',
-        'for i=1,b do R[a][i]=R[a+i] end')
+def _build_dispatch(dt, dm, imap, opcodes, rng):
+    """
+    Build register VM dispatch table.
+    Each handler is multiline with:
+    - local vars for intermediate values
+    - fake noise locals (look like VM temporaries)
+    - proper logic split across lines
+    """
+    exe = imap['__IX_EXE__']
+    used_nv = set()
 
-    lines.append('}')
+    def nv():
+        return _fresh(rng, used_nv)
+
+    lines = [f'  local {dt} = {{']
+
+    def h(nm, body_lines):
+        lines.append(f'    [{dm[nm]}] = function(a, b, c, bx, sbx)')
+        for bl in body_lines:
+            lines.append(f'      {bl}')
+        lines.append(f'    end,')
+
+    # ── LOADK ──────────────────────────────────────────────────────────────
+    n1 = nv()
+    h('LOADK', [
+        f'local {n1} = bx + 1',
+        f'R[a] = K[{n1}]',
+    ])
+
+    # ── LOADNIL ─────────────────────────────────────────────────────────────
+    n1 = nv()
+    h('LOADNIL', [
+        f'local {n1} = a',
+        f'while {n1} <= a + b do',
+        f'  R[{n1}] = nil',
+        f'  {n1} = {n1} + 1',
+        f'end',
+    ])
+
+    # ── LOADBOOL ────────────────────────────────────────────────────────────
+    n1 = nv()
+    h('LOADBOOL', [
+        f'local {n1} = (b ~= 0)',
+        f'R[a] = {n1}',
+        f'if c ~= 0 then',
+        f'  pc = pc + 1',
+        f'end',
+    ])
+
+    # ── MOVE ────────────────────────────────────────────────────────────────
+    n1 = nv()
+    h('MOVE', [
+        f'local {n1} = R[b]',
+        f'R[a] = {n1}',
+    ])
+
+    # ── GETGLOBAL ───────────────────────────────────────────────────────────
+    n1, n2 = nv(), nv()
+    h('GETGLOBAL', [
+        f'local {n1} = bx + 1',
+        f'local {n2} = K[{n1}]',
+        f'R[a] = env[{n2}]',
+    ])
+
+    # ── SETGLOBAL ───────────────────────────────────────────────────────────
+    n1, n2 = nv(), nv()
+    h('SETGLOBAL', [
+        f'local {n1} = bx + 1',
+        f'local {n2} = K[{n1}]',
+        f'env[{n2}] = R[a]',
+    ])
+
+    # ── NEWTABLE ────────────────────────────────────────────────────────────
+    n1 = nv()
+    h('NEWTABLE', [
+        f'local {n1} = {{}}',
+        f'R[a] = {n1}',
+    ])
+
+    # ── GETTABLE ────────────────────────────────────────────────────────────
+    n1, n2, n3 = nv(), nv(), nv()
+    h('GETTABLE', [
+        f'local {n1} = R[b]',
+        f'local {n2} = RK(c)',
+        f'local {n3} = {n1}[{n2}]',
+        f'R[a] = {n3}',
+    ])
+
+    # ── SETTABLE ────────────────────────────────────────────────────────────
+    n1, n2, n3 = nv(), nv(), nv()
+    h('SETTABLE', [
+        f'local {n1} = R[a]',
+        f'local {n2} = RK(b)',
+        f'local {n3} = RK(c)',
+        f'{n1}[{n2}] = {n3}',
+    ])
+
+    # ── SELF ────────────────────────────────────────────────────────────────
+    n1, n2, n3 = nv(), nv(), nv()
+    h('SELF', [
+        f'local {n1} = R[b]',
+        f'local {n2} = RK(c)',
+        f'local {n3} = {n1}[{n2}]',
+        f'R[a + 1] = {n1}',
+        f'R[a] = {n3}',
+    ])
+
+    # ── Arithmetic ──────────────────────────────────────────────────────────
+    for op_nm, lua_op in [('ADD','+'),('SUB','-'),('MUL','*'),('DIV','/'),('MOD','%'),('POW','^')]:
+        n1, n2, n3 = nv(), nv(), nv()
+        h(op_nm, [
+            f'local {n1} = RK(b)',
+            f'local {n2} = RK(c)',
+            f'local {n3} = {n1} {lua_op} {n2}',
+            f'R[a] = {n3}',
+        ])
+
+    # ── Unary ───────────────────────────────────────────────────────────────
+    for op_nm, lua_op in [('UNM','-'),('NOT','not '),('LEN','#')]:
+        n1, n2 = nv(), nv()
+        h(op_nm, [
+            f'local {n1} = R[b]',
+            f'local {n2} = {lua_op}{n1}',
+            f'R[a] = {n2}',
+        ])
+
+    # ── CONCAT ──────────────────────────────────────────────────────────────
+    n1, n2, n3 = nv(), nv(), nv()
+    h('CONCAT', [
+        f'local {n1} = tostring(R[b])',
+        f'local {n2} = b + 1',
+        f'while {n2} <= c do',
+        f'  local {n3} = tostring(R[{n2}])',
+        f'  {n1} = {n1} .. {n3}',
+        f'  {n2} = {n2} + 1',
+        f'end',
+        f'R[a] = {n1}',
+    ])
+
+    # ── JMP ─────────────────────────────────────────────────────────────────
+    n1 = nv()
+    h('JMP', [
+        f'local {n1} = sbx',
+        f'pc = pc + {n1}',
+    ])
+
+    # ── Compare: EQ, LT, LE ─────────────────────────────────────────────────
+    for op_nm, lua_op in [('EQ','=='),('LT','<'),('LE','<=')]:
+        n1, n2, n3 = nv(), nv(), nv()
+        h(op_nm, [
+            f'local {n1} = RK(b)',
+            f'local {n2} = RK(c)',
+            f'local {n3} = ({n1} {lua_op} {n2})',
+            f'if {n3} ~= (a ~= 0) then',
+            f'  pc = pc + 1',
+            f'end',
+        ])
+
+    # ── TEST ────────────────────────────────────────────────────────────────
+    n1, n2 = nv(), nv()
+    h('TEST', [
+        f'local {n1} = not not R[a]',
+        f'local {n2} = (c ~= 0)',
+        f'if {n1} ~= {n2} then',
+        f'  pc = pc + 1',
+        f'end',
+    ])
+
+    # ── TESTSET ─────────────────────────────────────────────────────────────
+    n1, n2 = nv(), nv()
+    h('TESTSET', [
+        f'local {n1} = not not R[b]',
+        f'local {n2} = (c ~= 0)',
+        f'if {n1} ~= {n2} then',
+        f'  pc = pc + 1',
+        f'else',
+        f'  R[a] = R[b]',
+        f'end',
+    ])
+
+    # ── CALL ────────────────────────────────────────────────────────────────
+    n1, n2, n3, n4, n5, n6 = nv(), nv(), nv(), nv(), nv(), nv()
+    h('CALL', [
+        f'local {n1} = R[a]',
+        f'local {n2} = b - 1',
+        f'if {n2} < 0 then {n2} = 0 end',
+        f'local {n3} = {{}}',
+        f'for {n4} = 1, {n2} do',
+        f'  {n3}[{n4}] = R[a + {n4}]',
+        f'end',
+        f'local {n5} = c - 1',
+        f'if {n5} < 0 then {n5} = 0 end',
+        f'local {n6} = {{{n1}(table.unpack({n3}))}}',
+        f'for {n4} = 0, {n5} - 1 do',
+        f'  R[a + {n4}] = {n6}[{n4} + 1]',
+        f'end',
+    ])
+
+    # ── TAILCALL ────────────────────────────────────────────────────────────
+    n1, n2, n3, n4 = nv(), nv(), nv(), nv()
+    h('TAILCALL', [
+        f'local {n1} = R[a]',
+        f'local {n2} = {{}}',
+        f'for {n3} = 1, b - 1 do',
+        f'  {n2}[{n3}] = R[a + {n3}]',
+        f'end',
+        f'return {n1}(table.unpack({n2}))',
+    ])
+
+    # ── VARARG ──────────────────────────────────────────────────────────────
+    n1, n2, n3 = nv(), nv(), nv()
+    h('VARARG', [
+        f'local {n1} = b - 1',
+        f'if {n1} < 0 then {n1} = #vararg end',
+        f'for {n2} = 0, {n1} - 1 do',
+        f'  local {n3} = vararg[{n2} + 1]',
+        f'  R[a + {n2}] = {n3}',
+        f'end',
+    ])
+
+    # ── CLOSURE ─────────────────────────────────────────────────────────────
+    n1, n2, n3, n4, n5, n6, n7 = nv(), nv(), nv(), nv(), nv(), nv(), nv()
+    h('CLOSURE', [
+        f'local {n1} = P[bx + 1]',
+        f'local {n2} = {n1}.np',
+        f'local {n3} = {n1}.va',
+        f'R[a] = function(...)',
+        f'  local {n4} = {{...}}',
+        f'  local {n5} = {{}}',
+        f'  for {n6} = 1, {n2} do',
+        f'    {n5}[{n6}] = {n4}[{n6}]',
+        f'  end',
+        f'  local {n7} = {{}}',
+        f'  if {n3} then',
+        f'    for {n6} = {n2} + 1, #{n4} do',
+        f'      {n7}[#{n7} + 1] = {n4}[{n6}]',
+        f'    end',
+        f'  end',
+        f'  return {exe}({n1}, env, {n7})',
+        f'end',
+    ])
+
+    # ── FORPREP ─────────────────────────────────────────────────────────────
+    n1, n2 = nv(), nv()
+    h('FORPREP', [
+        f'local {n1} = R[a + 2]',
+        f'local {n2} = R[a] - {n1}',
+        f'R[a] = {n2}',
+        f'pc = pc + sbx',
+    ])
+
+    # ── FORLOOP ─────────────────────────────────────────────────────────────
+    n1, n2, n3, n4 = nv(), nv(), nv(), nv()
+    h('FORLOOP', [
+        f'local {n1} = R[a + 2]',
+        f'local {n2} = R[a] + {n1}',
+        f'local {n3} = R[a + 1]',
+        f'R[a] = {n2}',
+        f'local {n4} = false',
+        f'if {n1} > 0 and {n2} <= {n3} then',
+        f'  {n4} = true',
+        f'elseif {n1} <= 0 and {n2} >= {n3} then',
+        f'  {n4} = true',
+        f'end',
+        f'if {n4} then',
+        f'  R[a + 3] = {n2}',
+        f'  pc = pc + sbx',
+        f'end',
+    ])
+
+    # ── TFORLOOP ────────────────────────────────────────────────────────────
+    n1, n2, n3, n4, n5, n6 = nv(), nv(), nv(), nv(), nv(), nv()
+    h('TFORLOOP', [
+        f'local {n1} = R[a]',
+        f'local {n2} = R[a + 1]',
+        f'local {n3} = R[a + 2]',
+        f'local {n4} = {{{n1}({n2}, {n3})}}',
+        f'local {n5} = {n4}[1]',
+        f'if {n5} ~= nil then',
+        f'  R[a + 2] = {n5}',
+        f'  for {n6} = 1, c do',
+        f'    R[a + 2 + {n6}] = {n4}[{n6}]',
+        f'  end',
+        f'else',
+        f'  pc = pc + 1',
+        f'end',
+    ])
+
+    # ── SETLIST ─────────────────────────────────────────────────────────────
+    n1, n2 = nv(), nv()
+    h('SETLIST', [
+        f'local {n1} = R[a]',
+        f'for {n2} = 1, b do',
+        f'  {n1}[{n2}] = R[a + {n2}]',
+        f'end',
+    ])
+
+    lines.append('  }')
     return '\n'.join(lines)
 
-def generate_vm(opcodes,rng_seed=None,**_)->str:
-    rng=random.Random(rng_seed if rng_seed is not None else random.randint(0,2**31))
-    used=set()
-    def fresh(): return _fresh(rng,used)
 
-    # Assign random dispatch IDs per build (large ints, not sequential)
-    pool=list(range(10000,65000)); rng.shuffle(pool)
-    dm={nm:pool[i] for i,nm in enumerate(_HANDLED)}
-    # RETURN gets special ID -1 (handled inline in EXE)
+def generate_vm(opcodes, rng_seed=None, **_) -> str:
+    rng  = random.Random(rng_seed if rng_seed is not None else random.randint(0, 2**31))
+    used = set()
+    def fresh(): return _fresh(rng, used)
 
-    # Inner VM name substitution
-    imap={ph:fresh() for ph in _INNER_PH}
-    inner=_INNER
+    # Random dispatch IDs per build
+    pool = list(range(10000, 65000)); rng.shuffle(pool)
+    dm   = {nm: pool[i] for i, nm in enumerate(_HANDLED)}
 
-    # Build encrypted opcode table
-    enc_tbl=_build_op_table(imap['__IX_OP__'],imap['__IX_XOR__'],opcodes,dm,rng)
-    inner=inner.replace('__IX_OPENC__',enc_tbl)
+    # ── Inner VM ─────────────────────────────────────────────────────────────
+    imap = {ph: fresh() for ph in _INNER_PH}
+    inner = _INNER
 
-    # Build dispatch table — do BEFORE imap substitution so __IX_DT__ still a placeholder
-    dt_lua=_build_dispatch('__IX_DT__',dm,imap,opcodes)
-    # Replace DT placeholder in inner: embed full DT definition
-    inner=inner.replace('local DT=__IX_DT__',dt_lua+'\n  local DT=__IX_DT__')
+    # Encrypted opcode→dispatch_id table
+    enc_tbl = _build_op_table(imap['__IX_OP__'], imap['__IX_XOR__'], opcodes, dm, rng)
+    inner = inner.replace('__IX_OPENC__', enc_tbl)
 
-    # RETURN special case: op id=-1 in OP table, handled inline
-    # Add RETURN to OP table as -1
-    ret_id=opcodes.id('RETURN')
-    inner=inner.replace(
-        f'local nm=__IX_OP__[op]',
-        f'local nm=__IX_OP__[op];if op=={ret_id} then nm=-1 end'
-    )
+    # Dispatch table — build with placeholder names first, then replace
+    dt_lua = _build_dispatch('__IX_DT__', dm, imap, opcodes, rng)
+    inner  = inner.replace('__IX_DT_DEF__', dt_lua)
 
-    for ph,rn in imap.items(): inner=inner.replace(ph,rn)
-    inner=re.sub(r'--[^\n]*','',inner)
-    inner=re.sub(r'\n{3,}','\n\n',inner).strip()
+    # RETURN id — inlined in execute loop
+    ret_id = opcodes.id('RETURN')
+    inner  = inner.replace('__IX_RET_ID__', str(ret_id))
 
-    # Outer VM
-    outer=_OUTER
-    omap={ph:fresh() for ph in _OUTER_PH}
-    for ph,rn in omap.items(): outer=outer.replace(ph,rn)
-    # Inject inner function names into outer's LDP
-    outer=outer.replace('__IX_DS_NAME__', imap['__IX_DS__'])
-    outer=outer.replace('__IX_DSC_NAME__',imap['__IX_DSC__'])
-    outer=outer.replace('__IX_EXE_NAME__',imap['__IX_EXE__'])
-    # Outer LDP calls itself recursively — fix the __OX_LDP__ self-ref
-    outer=outer.replace(
-        f'p.pr[i]={omap["__OX_LDP__"]}(bl)',
-        f'p.pr[i]={omap["__OX_LDP__"]}({omap["__OX_RDR__"]}(bl))'
-    )
-    outer=re.sub(r'--[^\n]*','',outer)
-    outer=re.sub(r'\n{3,}','\n\n',outer).strip()
+    # Substitute all __IX_*__ → random names
+    for ph, rn in imap.items():
+        inner = inner.replace(ph, rn)
 
-    return inner+'\n'+outer
+    inner = re.sub(r'--[^\n]*', '', inner)
+    inner = re.sub(r'\n{3,}', '\n\n', inner).strip()
+
+    # ── Outer VM ─────────────────────────────────────────────────────────────
+    omap  = {ph: fresh() for ph in _OUTER_PH}
+    outer = _OUTER
+
+    for ph, rn in omap.items():
+        outer = outer.replace(ph, rn)
+
+    # Wire inner function references into outer
+    outer = outer.replace('__IX_DS_REF__',  imap['__IX_DS__'])
+    outer = outer.replace('__IX_DSC_REF__', imap['__IX_DSC__'])
+    outer = outer.replace('__IX_EXE_REF__', imap['__IX_EXE__'])
+
+    outer = re.sub(r'--[^\n]*', '', outer)
+    outer = re.sub(r'\n{3,}', '\n\n', outer).strip()
+
+    return inner + '\n' + outer
