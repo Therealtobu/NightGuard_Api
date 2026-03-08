@@ -1,32 +1,21 @@
-import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-"""NightGuard V2 - Dead Code + Strong Opaque Predicates
-
-Uses the same opaque predicate generators as control_flow.py
-so they're consistent and reusable.
-"""
+import sys,os;sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import random
 import ast_nodes as N
-from ng_transforms.control_flow import _opaque_true, _opaque_false, _iname
+from ng_transforms.control_flow import _opaque_false, _opaque_true, _iname
 
 def _dead_block(rng):
     v = _iname(rng)
-    k = rng.randint(0, 5)
+    k = rng.randint(0, 4)
     if k == 0:
         return N.Block([N.LocalAssign([N.Name(v)], [N.Number(rng.randint(1,9999))])])
     elif k == 1:
         a, b = rng.randint(1,50), rng.randint(1,50)
-        return N.Block([N.LocalAssign([N.Name(v)],
-            [N.BinOp('*', N.Number(a), N.Number(b))])])
+        return N.Block([N.LocalAssign([N.Name(v)], [N.BinOp('*', N.Number(a), N.Number(b))])])
     elif k == 2:
         return N.Block([N.LocalAssign([N.Name(v)], [N.String('__ng')])])
     elif k == 3:
-        return N.Block([N.LocalAssign([N.Name(v)],
-            [N.Call(N.Field(N.Name('math'), N.Name('floor')),
-                    [N.Number(rng.randint(1,100))])])])
-    elif k == 4:
         return N.Block([N.LocalAssign([N.Name(v)], [N.NilExpr()])])
     else:
-        # Nested dead: if false then if false then ... end end
         inner = N.Block([N.LocalAssign([N.Name(_iname(rng))], [N.Number(rng.randint(1,99))])])
         return N.Block([N.If(_opaque_false(rng), inner, [])])
 
