@@ -1,366 +1,522 @@
-import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sys,os;sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""NightGuard V3 — Register VM Compiler
+Each local variable occupies a fixed register for its lifetime.
+Temporaries are allocated above locals and freed after use.
 """
-NightGuard V2 - Bytecode Compiler
-Walks transformed AST, emits packed instructions into Proto objects.
-"""
-import random, sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import ast_nodes as N
 from ng_transforms.string_encrypt import EncryptedStringNode
 from ng_compiler.proto import Proto
-from ng_compiler.opcodes import Opcodes
+from ng_compiler.opcodes import Opcodes,pack,pack_bx,unpack,unpack_bx,BX_BIAS,rk,is_rk,RK_BIT
 
 class CompileError(Exception): pass
 
-class Compiler:
-    def __init__(self, opcodes, rng, string_table, progress_cb=None):
-        self.op  = opcodes
-        self.rng = rng
-        self.st  = string_table
-        self.progress_cb = progress_cb
+# ── Register allocator ────────────────────────────────────────────────────────
+class _Regs:
+    def __init__(self):
+        self._top=0; self._max=0
+    def alloc(self)->int:
+        r=self._top; self._top+=1
+        if self._top>self._max: self._max=self._top
+        return r
+    def free(self,r):
+        if r==self._top-1: self._top-=1
+    def free_to(self,top): self._top=top
+    @property
+    def top(self): return self._top
+    @property
+    def maxused(self): return self._max
 
-    def compile(self, block):
-        proto = Proto(); proto._pack = self.op.pack_instr; proto._unpack = self.op.unpack_instr; proto.is_vararg = True
-        ctx = _Ctx(proto, self.op, self.rng, self.st, None, progress_cb=self.progress_cb)
-        ctx.compile_block(block)
-        proto.emit(self.op.get('RETURN'), 0)
-        _inject_junk(proto, self.op, self.rng, 0.10)
-        return proto
-
-
+# ── Function context ──────────────────────────────────────────────────────────
 class _Ctx:
-    def __init__(self, proto, op, rng, st, parent, progress_cb=None):
-        self.proto = proto; self.op = op; self.rng = rng; self.st = st; self.parent = parent
-        self._locals = {}; self._local_stack = []; self._break_patches = [[]]
-        self.progress_cb = progress_cb or (parent.progress_cb if parent else None)
+    def __init__(self,proto,op,rng,st,parent=None,cb=None):
+        self.proto=proto; self.op=op; self.rng=rng; self.st=st
+        self.parent=parent; self.cb=cb or (parent.cb if parent else None)
+        self.regs=_Regs()
+        self._scopes=[{}]   # stack of {name->reg}
+        self._breaks=[[]]   # patch lists for break
 
-    # ── Locals ────────────────────────────────────────────────────────────────
-    def _push_local(self, name):
-        idx = len(self._local_stack); self._local_stack.append(name)
-        self._locals[name] = idx; return idx
-    def _local_idx(self, name):
-        return self._locals.get(name)
+    # ── Scope ─────────────────────────────────────────────────────────────────
+    def push_scope(self): self._scopes.append({})
+    def pop_scope(self):
+        sc=self._scopes.pop()
+        if sc:
+            lowest=min(sc.values())
+            self.regs.free_to(lowest)
 
-    # ── Emit helpers ──────────────────────────────────────────────────────────
-    def E(self, opname, a=0, b=0):
-        return self.proto.emit(self.op.get(opname), a, b)
-    def _emit_const(self, v):
-        self.E('LOAD_CONST', self.proto.add_const(v))
-    def _load_name(self, name):
-        loc = self._local_idx(name)
-        if loc is not None: self.E('LOAD_LOCAL', loc)
-        else: self.E('LOAD_GLOBAL', self.proto.add_const(name))
-    def _store_name(self, name):
-        loc = self._local_idx(name)
-        if loc is not None: self.E('STORE_LOCAL', loc)
-        else: self.E('STORE_GLOBAL', self.proto.add_const(name))
+    def def_local(self,name)->int:
+        r=self.regs.alloc(); self._scopes[-1][name]=r; return r
 
-    # ── Block / Statements ────────────────────────────────────────────────────
-    def compile_block(self, block):
-        n_before = len(self._local_stack)
-        for stmt in block.body: self._stmt(stmt)
-        n_after  = len(self._local_stack)
-        for _ in range(n_after - n_before):
-            self.E('POP')
-            if self._local_stack:
-                nm = self._local_stack.pop()
-                self._locals.pop(nm, None)
+    def resolve(self,name):
+        for sc in reversed(self._scopes):
+            if name in sc: return sc[name]
+        return None
 
-    def _stmt(self, node):
-        t = type(node).__name__
-        m = getattr(self, f'_s_{t}', None)
-        if m is None: raise CompileError(f"Unsupported statement: {t}")
+    # ── Emit ──────────────────────────────────────────────────────────────────
+    def E(self,instr)->int:  return self.proto.emit(instr)
+    def pc(self)->int:       return len(self.proto.code)
+
+    def abc(self,nm,a,b=0,c=0): return self.E(self.op.mk(nm,a,b,c))
+    def bx(self,nm,a,bx):       return self.E(self.op.mk_bx(nm,a,bx))
+    def sbx(self,nm,a,s):       return self.E(self.op.mk_sbx(nm,a,s))
+
+    def jmp(self,delta=0):       return self.sbx('JMP',0,delta)
+    def patch(self,idx,target=None):
+        t=target if target is not None else self.pc()
+        self.proto.patch_sbx(idx,t)
+
+    # ── RK helpers ────────────────────────────────────────────────────────────
+    def _rk_literal(self,node):
+        """Return RK-encoded const if node is a literal, else None."""
+        if isinstance(node,N.Number):  k=self.proto.add_const(node.n);   return rk(k) if k<256 else None
+        if isinstance(node,N.String):  k=self.proto.add_const(node.s);   return rk(k) if k<256 else None
+        if isinstance(node,N.NilExpr): k=self.proto.add_const(None);     return rk(k) if k<256 else None
+        if isinstance(node,N.TrueExpr): k=self.proto.add_const(True);    return rk(k) if k<256 else None
+        if isinstance(node,N.FalseExpr):k=self.proto.add_const(False);   return rk(k) if k<256 else None
+        return None
+
+    def expr_rk(self,node):
+        """Compile node as an RK operand (const slot or temp register)."""
+        v=self._rk_literal(node)
+        if v is not None: return v, None   # (rk_value, temp_reg_to_free)
+        r=self.regs.alloc()
+        self.expr(node,r)
+        return r, r   # (reg_as_rk, reg_to_free)
+
+    # ── Expression compiler ───────────────────────────────────────────────────
+    def expr(self,node,dest=None)->int:
+        """Compile expr into dest (alloc if None). Return dest register."""
+        t=type(node).__name__
+        m=getattr(self,f'_e_{t}',None)
+        if m is None: raise CompileError(f'Unknown expr: {t}')
+        return m(node,dest)
+
+    def _alloc(self,dest): return dest if dest is not None else self.regs.alloc()
+
+    def _e_Number(self,n,dest):
+        r=self._alloc(dest); k=self.proto.add_const(n.n); self.bx('LOADK',r,k); return r
+    def _e_String(self,n,dest):
+        r=self._alloc(dest); k=self.proto.add_const(n.s); self.bx('LOADK',r,k); return r
+    def _e_NilExpr(self,n,dest):
+        r=self._alloc(dest); self.abc('LOADNIL',r,r); return r
+    def _e_TrueExpr(self,n,dest):
+        r=self._alloc(dest); self.abc('LOADBOOL',r,1,0); return r
+    def _e_FalseExpr(self,n,dest):
+        r=self._alloc(dest); self.abc('LOADBOOL',r,0,0); return r
+    def _e_Vararg(self,n,dest):
+        r=self._alloc(dest); self.abc('VARARG',r,2); return r
+
+    def _e_EncryptedStringNode(self,n,dest):
+        r=self._alloc(dest)
+        entry=self.st.get(n.idx)
+        if entry is None: k=self.proto.add_const(''); self.bx('LOADK',r,k); return r
+        L=len(entry)
+        if L>=7:   enc,seed,step,sk,chunks,noise,order=entry[:7]
+        elif L>=6: enc,seed,step,sk,chunks,noise=entry[:6]; order=None
+        elif L==4: enc,seed,step,sk=entry; chunks=None; noise=[]; order=None
+        else:      enc,seed,step=entry[:3]; sk=0; chunks=None; noise=[]; order=None
+        k=self.proto.add_const(('__enc_str',tuple(enc),seed,step,sk,chunks,noise,order))
+        self.bx('LOADK',r,k); return r
+
+    def _e_Name(self,n,dest):
+        reg=self.resolve(n.id)
+        if reg is not None:
+            if dest is not None and dest!=reg: self.abc('MOVE',dest,reg); return dest
+            return reg
+        r=self._alloc(dest); k=self.proto.add_const(n.id); self.bx('GETGLOBAL',r,k); return r
+
+    def _e_Field(self,n,dest):
+        r=self._alloc(dest)
+        obj=self.expr(n.value)
+        k=self.proto.add_const(n.key.id)
+        # GETTABLE R[r] = R[obj][RK(k)]
+        self.abc('GETTABLE',r,obj,rk(k) if k<256 else (lambda t: (self.bx('LOADK',t,k),t)[1])(self.regs.alloc()))
+        if obj!=r: self.regs.free(obj)
+        return r
+
+    def _e_Index(self,n,dest):
+        r=self._alloc(dest)
+        obj=self.expr(n.value)
+        kv,ktmp=self.expr_rk(n.key)
+        self.abc('GETTABLE',r,obj,kv)
+        if ktmp is not None: self.regs.free(ktmp)
+        if obj!=r: self.regs.free(obj)
+        return r
+
+    def _e_UnOp(self,n,dest):
+        OPS={'-':'UNM','not':'NOT','#':'LEN'}
+        r=self._alloc(dest)
+        rb=self.expr(n.operand)
+        self.abc(OPS[n.op],r,rb)
+        if rb!=r: self.regs.free(rb)
+        return r
+
+    def _e_BinOp(self,n,dest):
+        if n.op=='and': return self._e_and(n,dest)
+        if n.op=='or':  return self._e_or(n,dest)
+        if n.op=='..':  return self._e_concat(n,dest)
+        CMP={'==':('EQ',0),'~=':('EQ',1),'<':('LT',0),'<=':('LE',0),'>':('LT',1),'>=':('LE',1)}
+        ARITH={'+':'ADD','-':'SUB','*':'MUL','/':'DIV','%':'MOD','^':'POW'}
+        if n.op in CMP:  return self._e_cmp(n,dest,CMP[n.op])
+        if n.op in ARITH:
+            r=self._alloc(dest)
+            bv,btmp=self.expr_rk(n.left)
+            cv,ctmp=self.expr_rk(n.right)
+            self.abc(ARITH[n.op],r,bv,cv)
+            if ctmp is not None: self.regs.free(ctmp)
+            if btmp is not None: self.regs.free(btmp)
+            return r
+        raise CompileError(f'Unknown binop: {n.op}')
+
+    def _e_cmp(self,n,dest,spec):
+        op_nm,flip=spec
+        r=self._alloc(dest)
+        # swap operands for > and >=
+        if n.op in('>','>='):
+            bv,btmp=self.expr_rk(n.right); cv,ctmp=self.expr_rk(n.left)
+        else:
+            bv,btmp=self.expr_rk(n.left);  cv,ctmp=self.expr_rk(n.right)
+        # EQ/LT/LE: if (B op C) ~= A then skip next
+        # We want: if comparison is true → R[r]=true, else R[r]=false
+        self.abc(op_nm,flip,bv,cv)   # if result~=flip: pc++  → skip jmp to false
+        j=self.jmp(1)                # skip false LOADBOOL
+        self.abc('LOADBOOL',r,0,1)   # false, then skip next (the true LOADBOOL)
+        self.abc('LOADBOOL',r,1,0)   # true
+        if ctmp is not None: self.regs.free(ctmp)
+        if btmp is not None: self.regs.free(btmp)
+        return r
+
+    def _e_and(self,n,dest):
+        r=self._alloc(dest)
+        self.expr(n.left,r)
+        self.abc('TEST',r,0,0)    # if not R[r]: skip jmp
+        j=self.jmp(0)             # jump over right (result stays false in r)
+        self.expr(n.right,r)
+        self.patch(j)
+        return r
+
+    def _e_or(self,n,dest):
+        r=self._alloc(dest)
+        self.expr(n.left,r)
+        self.abc('TEST',r,0,1)    # if R[r]: skip jmp
+        j=self.jmp(0)
+        self.expr(n.right,r)
+        self.patch(j)
+        return r
+
+    def _e_concat(self,n,dest):
+        # Collect all concat operands in a flat list
+        parts=[]
+        def collect(node):
+            if isinstance(node,N.BinOp) and node.op=='..':
+                collect(node.left); collect(node.right)
+            else: parts.append(node)
+        collect(n)
+        base=self.regs.top
+        part_regs=[]
+        for p in parts:
+            pr=self.regs.alloc(); self.expr(p,pr); part_regs.append(pr)
+        r=self._alloc(dest)
+        self.abc('CONCAT',r,base,base+len(parts)-1)
+        for pr in reversed(part_regs): self.regs.free(pr)
+        return r
+
+    def _e_Call(self,n,dest):
+        base=self.regs.top
+        self.expr(n.func,base); self.regs._top=max(self.regs._top,base+1)
+        for i,arg in enumerate(n.args):
+            ar=self.regs.alloc(); self.expr(arg,ar)
+        nargs=len(n.args)
+        nret=1 if dest is not None else 0
+        self.abc('CALL',base,nargs+1,nret+1)
+        # results start at base
+        self.regs.free_to(base+nret)
+        if nret and dest is not None and dest!=base:
+            self.abc('MOVE',dest,base); self.regs.free(base); return dest
+        return base
+
+    def _e_Invoke(self,n,dest):
+        base=self.regs.top
+        obj=self.expr(n.source,base); self.regs._top=max(self.regs._top,base+1)
+        k=self.proto.add_const(n.func.id)
+        ck=rk(k) if k<256 else 0   # SELF uses RK(C) for method name
+        self.abc('SELF',base,obj,ck)
+        self.regs._top=base+2
+        for arg in n.args:
+            ar=self.regs.alloc(); self.expr(arg,ar)
+        nret=1 if dest is not None else 0
+        self.abc('CALL',base,len(n.args)+2,nret+1)
+        self.regs.free_to(base+nret)
+        if nret and dest is not None and dest!=base:
+            self.abc('MOVE',dest,base); self.regs.free(base); return dest
+        return base
+
+    def _e_Table(self,n,dest):
+        r=self._alloc(dest); self.abc('NEWTABLE',r)
+        arr=0
+        for f in n.fields:
+            if isinstance(f,N.TableField):
+                kk=rk(self.proto.add_const(f.key.id))
+                vr=self.regs.alloc(); self.expr(f.value,vr)
+                self.abc('SETTABLE',r,kk,vr); self.regs.free(vr)
+            elif isinstance(f,N.TableIndex):
+                kv,ktmp=self.expr_rk(f.key)
+                vr=self.regs.alloc(); self.expr(f.value,vr)
+                self.abc('SETTABLE',r,kv,vr)
+                self.regs.free(vr)
+                if ktmp is not None: self.regs.free(ktmp)
+            else:
+                arr+=1; kk=rk(self.proto.add_const(arr))
+                vr=self.regs.alloc(); self.expr(f,vr)
+                self.abc('SETTABLE',r,kk,vr); self.regs.free(vr)
+        return r
+
+    def _e_AnonymousFunction(self,n,dest):
+        r=self._alloc(dest)
+        sub=self._fn(n.args,n.body,'anon')
+        self.bx('CLOSURE',r,self.proto.add_proto(sub))
+        return r
+
+    # ── Statements ────────────────────────────────────────────────────────────
+    def stmt(self,node):
+        t=type(node).__name__
+        m=getattr(self,f'_s_{t}',None)
+        if m is None: raise CompileError(f'Unknown stmt: {t}')
         m(node)
 
-    def _s_LocalAssign(self, n):
-        vals = n.values; nv = len(vals); nt = len(n.targets)
-        for v in vals: self._expr(v)
-        for _ in range(nt - nv): self.E('LOAD_NIL')
-        for t in n.targets:
-            slot = len(self._local_stack)
-            self._local_stack.append(t.id); self._locals[t.id] = slot
+    def compile_block(self,block):
+        saved=self.regs.top
+        self.push_scope()
+        for s in block.body: self.stmt(s)
+        self.pop_scope()
+        self.regs.free_to(saved)
 
-    def _s_Assign(self, n):
-        for v in n.values: self._expr(v)
-        for _ in range(len(n.targets) - len(n.values)): self.E('LOAD_NIL')
-        for tgt in reversed(n.targets): self._assign_target(tgt)
+    def _s_LocalAssign(self,n):
+        # Pre-allocate registers for all targets
+        regs=[]
+        for t in n.targets: regs.append(self.regs.alloc())
+        for i,(t,r) in enumerate(zip(n.targets,regs)):
+            if i<len(n.values): self.expr(n.values[i],r)
+            else: self.abc('LOADNIL',r,r)
+            self._scopes[-1][t.id]=r
 
-    def _assign_target(self, tgt):
-        if isinstance(tgt, N.Name):  self._store_name(tgt.id)
-        elif isinstance(tgt, N.Field):
-            self._expr(tgt.value); self.E('SET_FIELD', self.proto.add_const(tgt.key.id))
-        elif isinstance(tgt, N.Index):
-            self._expr(tgt.value); self._expr(tgt.key); self.E('SET_TABLE')
+    def _s_Assign(self,n):
+        tmps=[]
+        for i,tgt in enumerate(n.targets):
+            v=n.values[i] if i<len(n.values) else N.NilExpr()
+            r=self.regs.alloc(); self.expr(v,r); tmps.append(r)
+        for i,tgt in enumerate(n.targets): self._store(tgt,tmps[i])
+        for r in reversed(tmps): self.regs.free(r)
 
-    def _s_Return(self, n):
-        for v in n.values: self._expr(v)
-        self.E('RETURN', len(n.values))
+    def _store(self,tgt,src):
+        if isinstance(tgt,N.Name):
+            loc=self.resolve(tgt.id)
+            if loc is not None:
+                if loc!=src: self.abc('MOVE',loc,src)
+            else:
+                k=self.proto.add_const(tgt.id); self.bx('SETGLOBAL',src,k)
+        elif isinstance(tgt,N.Field):
+            obj=self.expr(tgt.value); k=rk(self.proto.add_const(tgt.key.id))
+            self.abc('SETTABLE',obj,k,src); self.regs.free(obj)
+        elif isinstance(tgt,N.Index):
+            obj=self.expr(tgt.value); kv,ktmp=self.expr_rk(tgt.key)
+            self.abc('SETTABLE',obj,kv,src)
+            if ktmp: self.regs.free(ktmp)
+            self.regs.free(obj)
 
-    def _s_Break(self, _):
-        idx = self.E('JUMP', 0); self._break_patches[-1].append(idx)
+    def _s_Return(self,n):
+        if not n.values: self.abc('RETURN',0,1); return
+        base=self.regs.top
+        for v in n.values: r=self.regs.alloc(); self.expr(v,r)
+        self.abc('RETURN',base,len(n.values)+1)
+        self.regs.free_to(base)
 
-    def _s_Call(self, n):   self._expr(n); self.E('POP')
-    def _s_Invoke(self, n): self._expr(n); self.E('POP')
-    def _s_Block(self, n):  self.compile_block(n)
-    def _s_Do(self, n):     self.compile_block(n.body)
+    def _s_Call(self,n):
+        base=self.regs.top
+        self.expr(n.func,base); self.regs._top=max(self.regs._top,base+1)
+        for arg in n.args: ar=self.regs.alloc(); self.expr(arg,ar)
+        self.abc('CALL',base,len(n.args)+1,1)
+        self.regs.free_to(base)
 
-    def _s_If(self, n):
-        end_jumps = []
-        self._expr(n.test)
-        j_false = self.E('JUMP_FALSE_POP', 0)
+    def _s_Invoke(self,n):
+        base=self.regs.top
+        obj=self.expr(n.source,base); self.regs._top=max(self.regs._top,base+1)
+        k=self.proto.add_const(n.func.id); ck=rk(k) if k<256 else 0
+        self.abc('SELF',base,obj,ck); self.regs._top=base+2
+        for arg in n.args: ar=self.regs.alloc(); self.expr(arg,ar)
+        self.abc('CALL',base,len(n.args)+2,1); self.regs.free_to(base)
+
+    def _s_Do(self,n):  self.compile_block(n.body)
+    def _s_Block(self,n): self.compile_block(n)
+
+    def _s_If(self,n):
+        ends=[]
+        cond=self.expr(n.test); self.abc('TEST',cond,0,0); self.regs.free(cond)
+        j_skip=self.jmp(0)
         self.compile_block(n.body)
         for clause in n.orelse:
-            j_end = self.E('JUMP', 0); end_jumps.append(j_end)
-            self.proto.patch(j_false, len(self.proto.code))
-            if isinstance(clause, N.ElseIf):
-                self._expr(clause.test)
-                j_false = self.E('JUMP_FALSE_POP', 0)
-                self.compile_block(clause.body)
+            j_end=self.jmp(0); ends.append(j_end); self.patch(j_skip)
+            if isinstance(clause,N.ElseIf):
+                cond=self.expr(clause.test); self.abc('TEST',cond,0,0); self.regs.free(cond)
+                j_skip=self.jmp(0); self.compile_block(clause.body)
             else:
-                j_false = None; self.compile_block(clause.body)
-        end_tgt = len(self.proto.code)
-        if j_false is not None: self.proto.patch(j_false, end_tgt)
-        for j in end_jumps: self.proto.patch(j, end_tgt)
+                j_skip=None; self.compile_block(clause.body)
+        if j_skip is not None: self.patch(j_skip)
+        for j in ends: self.patch(j)
 
-    def _s_While(self, n):
-        top = len(self.proto.code)
-        self._expr(n.test)
-        j_exit = self.E('JUMP_FALSE_POP', 0)
-        self._break_patches.append([])
+    def _s_While(self,n):
+        top=self.pc()
+        cond=self.expr(n.test); self.abc('TEST',cond,0,0); self.regs.free(cond)
+        j_exit=self.jmp(0); self._breaks.append([])
         self.compile_block(n.body)
-        self.E('JUMP', top)
-        end = len(self.proto.code)
-        self.proto.patch(j_exit, end)
-        for bp in self._break_patches.pop(): self.proto.patch(bp, end)
+        self.sbx('JMP',0,top-self.pc()-1)
+        self.patch(j_exit)
+        for bp in self._breaks.pop(): self.patch(bp)
 
-    def _s_Repeat(self, n):
-        top = len(self.proto.code)
-        self._break_patches.append([])
+    def _s_Repeat(self,n):
+        top=self.pc(); self._breaks.append([])
         self.compile_block(n.body)
-        self._expr(n.test); self.E('JUMP_FALSE_POP', top)
-        end = len(self.proto.code)
-        for bp in self._break_patches.pop(): self.proto.patch(bp, end)
+        cond=self.expr(n.test); self.abc('TEST',cond,0,0); self.regs.free(cond)
+        self.sbx('JMP',0,top-self.pc()-1)
+        for bp in self._breaks.pop(): self.patch(bp)
 
-    def _s_Fornumeric(self, n):
-        self._expr(n.start); self._expr(n.stop)
-        if n.step: self._expr(n.step)
-        else: self._emit_const(1)
-        base = len(self._local_stack)
-        for nm in ('__step','__stop',n.target.id):
-            self._local_stack.append(nm); self._locals[nm] = len(self._local_stack)-1
-        loop_top = len(self.proto.code)
-        self.E('LOAD_LOCAL', base+2); self._emit_const(0); self.E('GT')
-        j_neg = self.E('JUMP_FALSE_POP', 0)
-        self.E('LOAD_LOCAL', base+2); self.E('LOAD_LOCAL', base+1); self.E('LE')
-        j_exit1 = self.E('JUMP_FALSE_POP', 0); j_body = self.E('JUMP', 0)
-        neg_tgt = len(self.proto.code); self.proto.patch(j_neg, neg_tgt)
-        self.E('LOAD_LOCAL', base+2); self.E('LOAD_LOCAL', base+1); self.E('GE')
-        j_exit2 = self.E('JUMP_FALSE_POP', 0)
-        self.proto.patch(j_body, len(self.proto.code))
-        self._break_patches.append([]); self.compile_block(n.body)
-        self.E('LOAD_LOCAL', base+2); self.E('LOAD_LOCAL', base); self.E('ADD')
-        self.E('STORE_LOCAL', base+2); self.E('JUMP', loop_top)
-        end = len(self.proto.code)
-        self.proto.patch(j_exit1, end); self.proto.patch(j_exit2, end)
-        for bp in self._break_patches.pop(): self.proto.patch(bp, end)
-        for _ in range(3):
-            if self._local_stack: nm=self._local_stack.pop(); self._locals.pop(nm,None); self.E('POP')
+    def _s_Fornumeric(self,n):
+        base=self.regs.top
+        # R[base]=init, R[base+1]=limit, R[base+2]=step, R[base+3]=ctrl
+        ri=self.regs.alloc(); self.expr(n.start,ri)
+        rl=self.regs.alloc(); self.expr(n.stop,rl)
+        rs=self.regs.alloc()
+        if n.step: self.expr(n.step,rs)
+        else: k=self.proto.add_const(1); self.bx('LOADK',rs,k)
+        rc=self.regs.alloc()   # loop var
+        fp=self.sbx('FORPREP',base,0)
+        loop_top=self.pc()
+        self.push_scope(); self._scopes[-1][n.target.id]=rc
+        self._breaks.append([])
+        self.compile_block(n.body)
+        self.pop_scope()
+        fl=self.sbx('FORLOOP',base,0)
+        # Patch FORPREP: jump to FORLOOP+1 (end)
+        self.proto.patch_sbx(fp,self.pc()-1)
+        # Patch FORLOOP: jump back to loop_top
+        self.proto.patch_sbx(fl,loop_top)
+        end=self.pc()
+        for bp in self._breaks.pop(): self.patch(bp)
+        self.regs.free_to(base)
 
-    def _s_Forin(self, n):
-        for e in n.iter: self._expr(e)
-        for _ in range(3-len(n.iter)): self.E('LOAD_NIL')
-        base = len(self._local_stack)
-        for nm in ('__iter','__state','__ctrl'):
-            self._local_stack.append(nm); self._locals[nm]=len(self._local_stack)-1
-        loop_top = len(self.proto.code)
-        self.E('LOAD_LOCAL',base); self.E('LOAD_LOCAL',base+1); self.E('LOAD_LOCAL',base+2)
-        self.E('CALL',2,len(n.targets))
-        tgt_base = len(self._local_stack)
+    def _s_Forin(self,n):
+        base=self.regs.top
+        # R[base]=iter, R[base+1]=state, R[base+2]=ctrl
+        iters=n.iter
+        for i in range(3):
+            r=self.regs.alloc()
+            if i<len(iters): self.expr(iters[i],r)
+            else: self.abc('LOADNIL',r,r)
+        self.push_scope()
+        tbase=self.regs.top
         for t in n.targets:
-            self._local_stack.append(t.id); self._locals[t.id]=len(self._local_stack)-1
-        self.E('LOAD_LOCAL',tgt_base); self._emit_const(None); self.E('EQ')
-        j_exit = self.E('JUMP_TRUE_POP',0)
-        self.E('LOAD_LOCAL',tgt_base); self.E('STORE_LOCAL',base+2)
-        self._break_patches.append([]); self.compile_block(n.body); self.E('JUMP',loop_top)
-        end = len(self.proto.code); self.proto.patch(j_exit,end)
-        for bp in self._break_patches.pop(): self.proto.patch(bp,end)
-        for _ in range(len(n.targets)+3):
-            if self._local_stack: nm=self._local_stack.pop(); self._locals.pop(nm,None); self.E('POP')
+            r=self.regs.alloc(); self._scopes[-1][t.id]=r
+        loop_top=self.pc()
+        self.abc('TFORLOOP',base,0,len(n.targets))
+        j_exit=self.jmp(0)
+        self.abc('MOVE',base+2,tbase)  # update control var
+        self._breaks.append([])
+        self.compile_block(n.body)
+        self.sbx('JMP',0,loop_top-self.pc()-1)
+        self.patch(j_exit)
+        for bp in self._breaks.pop(): self.patch(bp)
+        self.pop_scope()
+        self.regs.free_to(base)
 
-    def _s_Function(self, n):
-        fn_name = _node_name(n.name)
-        if self.progress_cb: self.progress_cb("compile", f"fn {fn_name}")
-        p = self._compile_func(n.args, n.body)
-        self.E('MAKE_CLOSURE', self.proto.add_proto(p))
-        self._assign_target(n.name)
+    def _s_Break(self,_):
+        self._breaks[-1].append(self.jmp(0))
 
-    def _s_LocalFunction(self, n):
-        if self.progress_cb: self.progress_cb("compile", f"local fn {n.name.id}")
-        p = self._compile_func(n.args, n.body)
-        slot = len(self._local_stack)
-        self._local_stack.append(n.name.id); self._locals[n.name.id]=slot
-        self.E('MAKE_CLOSURE', self.proto.add_proto(p))
-        self.E('STORE_LOCAL', slot)
+    def _s_Function(self,n):
+        nm=_node_name(n.name)
+        if self.cb: self.cb('compile',f'fn {nm}')
+        sub=self._fn(n.args,n.body,nm)
+        r=self.regs.alloc(); self.bx('CLOSURE',r,self.proto.add_proto(sub))
+        self._store(n.name,r); self.regs.free(r)
 
-    def _s_Method(self, n):
-        if self.progress_cb: self.progress_cb("compile", f"method {n.name.id}")
-        args = [N.Name('self')] + n.args
-        p = self._compile_func(args, n.body)
-        self.E('MAKE_CLOSURE', self.proto.add_proto(p))
-        self._expr(n.source); self.E('SET_FIELD', self.proto.add_const(n.name.id))
+    def _s_LocalFunction(self,n):
+        if self.cb: self.cb('compile',f'local fn {n.name.id}')
+        r=self.regs.alloc(); self._scopes[-1][n.name.id]=r
+        sub=self._fn(n.args,n.body,n.name.id)
+        self.bx('CLOSURE',r,self.proto.add_proto(sub))
 
-    def _compile_func(self, args, body):
-        p = Proto(); p._pack = self.op.pack_instr; p._unpack = self.op.unpack_instr
-        ctx = _Ctx(p, self.op, self.rng, self.st, self, progress_cb=self.progress_cb)
+    def _s_Method(self,n):
+        if self.cb: self.cb('compile',f'method {n.name.id}')
+        args=[N.Name('self')]+n.args
+        sub=self._fn(args,n.body,n.name.id)
+        r=self.regs.alloc(); self.bx('CLOSURE',r,self.proto.add_proto(sub))
+        obj=self.expr(n.source); k=rk(self.proto.add_const(n.name.id))
+        self.abc('SETTABLE',obj,k,r)
+        self.regs.free(obj); self.regs.free(r)
+
+    def _fn(self,args,body,name='?')->Proto:
+        p=Proto(); p.name=name
+        ctx=_Ctx(p,self.op,self.rng,self.st,self,self.cb)
         for a in args:
-            if isinstance(a, N.Vararg): p.is_vararg = True
+            if isinstance(a,N.Vararg): p.is_vararg=True
             else:
-                sl = len(ctx._local_stack); ctx._local_stack.append(a.id)
-                ctx._locals[a.id]=sl; p.nparams += 1
-        ctx.compile_block(body); p.emit(self.op.get('RETURN'),0)
-        _inject_junk(p, self.op, self.rng, 0.08)
+                r=ctx.regs.alloc(); ctx._scopes[-1][a.id]=r; p.nparams+=1
+        ctx.compile_block(body)
+        p.emit(self.op.mk('RETURN',0,1))
+        p.maxreg=ctx.regs.maxused
+        _inject_junk(p,self.op,self.rng)
         return p
 
-    # ── Expressions ───────────────────────────────────────────────────────────
-    def _expr(self, node):
-        t = type(node).__name__
-        m = getattr(self, f'_e_{t}', None)
-        if m: m(node); return
-        sm = getattr(self, f'_s_{t}', None)
-        if sm: sm(node); return
-        raise CompileError(f"Unsupported expr: {t}")
 
-    def _e_EncryptedStringNode(self, n):
-        entry = self.st[n.idx]
-        L = len(entry)
-        if L >= 6:
-            enc_bytes,seed,step,sub_key,chunks,noise = entry[:6]
-        elif L == 4:
-            enc_bytes,seed,step,sub_key = entry; chunks=None; noise=[]
-        else:
-            enc_bytes,seed,step = entry[:3]; sub_key=0; chunks=None; noise=[]
-        c = self.proto.add_const(('__enc_str',tuple(enc_bytes),seed,step,sub_key,chunks,noise))
-        self.E('LOAD_CONST', c)
+# ── Top-level compiler ────────────────────────────────────────────────────────
+class Compiler:
+    def __init__(self,opcodes,rng,string_table,progress_cb=None):
+        self.op=opcodes; self.rng=rng; self.st=string_table; self.cb=progress_cb
 
-    def _e_Number(self, n):   self._emit_const(n.n)
-    def _e_String(self, n):   self._emit_const(n.s)
-    def _e_NilExpr(self, _):  self.E('LOAD_NIL')
-    def _e_TrueExpr(self, _): self.E('LOAD_BOOL', 1)
-    def _e_FalseExpr(self, _):self.E('LOAD_BOOL', 0)
-    def _e_Vararg(self, _):   self.E('VARARG', 0)
-    def _e_Name(self, n):     self._load_name(n.id)
-    def _e_Field(self, n):
-        self._expr(n.value); self.E('GET_FIELD', self.proto.add_const(n.key.id))
-    def _e_Index(self, n):
-        self._expr(n.value); self._expr(n.key); self.E('GET_TABLE')
-    def _e_Call(self, n):
-        self._expr(n.func)
-        for a in n.args: self._expr(a)
-        self.E('CALL', len(n.args), 1)
-    def _e_Invoke(self, n):
-        self._expr(n.source); self.E('SELF', self.proto.add_const(n.func.id))
-        for a in n.args: self._expr(a)
-        self.E('CALL', len(n.args)+1, 1)
-    def _e_AnonymousFunction(self, n):
-        p = self._compile_func(n.args, n.body); self.E('MAKE_CLOSURE', self.proto.add_proto(p))
-    def _e_Table(self, n):
-        self.E('NEW_TABLE')
-        scratch = len(self._local_stack)
-        self._local_stack.append('__tbl'); self._locals['__tbl'] = scratch
-        self.E('STORE_LOCAL', scratch)
-        for f in n.fields:
-            self.E('LOAD_LOCAL', scratch)
-            if isinstance(f, N.TableField):
-                self._expr(f.value); self.E('SET_FIELD', self.proto.add_const(f.key.id))
-            elif isinstance(f, N.TableIndex):
-                self._expr(f.key); self._expr(f.value); self.E('SET_TABLE')
-            else:
-                self._expr(f)
-                # sequential index: use length+1
-                self.E('LEN'); self._emit_const(1); self.E('ADD')
-                self.E('LOAD_LOCAL', scratch); self.E('SWAP'); self.E('SET_TABLE')
-        self.E('LOAD_LOCAL', scratch)
-        self._local_stack.pop(); self._locals.pop('__tbl', None)
-
-    def _e_BinOp(self, n):
-        OPS = {'+':'ADD','-':'SUB','*':'MUL','/':'DIV','%':'MOD','^':'POW',
-               '..':'CONCAT','==':'EQ','~=':'NEQ','<':'LT','<=':'LE','>':'GT','>=':'GE'}
-        if n.op == 'and':
-            self._expr(n.left); j=self.E('JUMP_FALSE',0); self.E('POP')
-            self._expr(n.right); self.proto.patch(j,len(self.proto.code))
-        elif n.op == 'or':
-            self._expr(n.left); j=self.E('JUMP_TRUE',0); self.E('POP')
-            self._expr(n.right); self.proto.patch(j,len(self.proto.code))
-        else:
-            self._expr(n.left); self._expr(n.right)
-            op = OPS.get(n.op)
-            if op is None: raise CompileError(f"Unknown binop: {n.op}")
-            self.E(op)
-    def _e_UnOp(self, n):
-        self._expr(n.operand)
-        OPS = {'-':'UNM','not':'NOT','#':'LEN','~':'UNM'}
-        self.E(OPS[n.op])
+    def compile(self,block)->Proto:
+        p=Proto(); p.name='main'; p.is_vararg=True
+        ctx=_Ctx(p,self.op,self.rng,self.st,cb=self.cb)
+        ctx.compile_block(block)
+        p.emit(self.op.mk('RETURN',0,1))
+        p.maxreg=ctx.regs.maxused
+        _inject_junk(p,self.op,self.rng,density=0.10)
+        return p
 
 
-def _inject_junk(proto, op, rng, density=0.08):
-    """Insert JUNK / FAKE no-ops ONLY at statement boundaries (stack=0 points).
-    Safe positions: after STORE_LOCAL, STORE_GLOBAL, POP, RETURN, JUMP*.
-    This avoids corrupting stack during expression evaluation.
-    Each insertion re-patches all jump targets that point past the insertion point.
-    """
-    from ng_compiler.proto import pack_instr as _pack_default
+# ── Junk injection ────────────────────────────────────────────────────────────
+_BOUNDARY_OPS={'RETURN','CALL','SETGLOBAL','SETTABLE','JMP','FORLOOP','FORPREP','TFORLOOP','SETLIST'}
 
-    _JUMP_CANONS = {'JUMP','JUMP_TRUE','JUMP_FALSE','JUMP_TRUE_POP','JUMP_FALSE_POP'}
-    # Only insert AFTER these opcodes — they leave stack clean
-    _SAFE_AFTER = {'STORE_LOCAL','STORE_GLOBAL','POP','RETURN',
-                   'JUMP','JUMP_TRUE_POP','JUMP_FALSE_POP'}
+def _inject_junk(proto,op,rng,density=0.08):
+    """Insert junk instrs only at statement boundaries; re-patch all JMPs."""
+    _JMP_OPS={'JMP','FORPREP','FORLOOP'}
+    safe=[]
+    for i,raw in enumerate(proto.code):
+        nm=op.name(raw&0xFF)
+        if nm in _BOUNDARY_OPS: safe.append(i+1)
+    if not safe: safe=[0]
 
-    junk_ops = [op.get('JUNK'), op.get('FAKE_STACK'), op.get('FAKE_MATH')]
-
-    _pack   = getattr(proto, '_pack',   _pack_default)
-    _unpack = getattr(proto, '_unpack', None)
-    if _unpack is None:
-        from ng_compiler.proto import unpack_instr as _unpack
-
-    # Find safe insertion positions (after safe opcodes)
-    safe_positions = []
-    for i, raw in enumerate(proto.code):
-        iop, _, _ = _unpack(raw)
-        if op.canonical(iop) in _SAFE_AFTER:
-            safe_positions.append(i + 1)  # insert AFTER instruction i
-
-    if not safe_positions:
-        safe_positions = [0]
-
-    n_junk = max(1, int(len(proto.code) * density))
+    n_junk=max(1,int(len(proto.code)*density))
     for _ in range(n_junk):
-        pos = rng.choice(safe_positions)
-        # Clamp to valid range
-        pos = min(pos, len(proto.code))
-        junk_instr = _pack(rng.choice(junk_ops), 0, 0)
-        proto.code.insert(pos, junk_instr)
-
-        # Re-patch every jump whose target >= pos
-        for idx in range(len(proto.code)):
-            raw = proto.code[idx]
-            iop, ia, ib = _unpack(raw)
-            canon = op.canonical(iop)
-            if canon in _JUMP_CANONS:
-                if ia >= pos and idx != pos:
-                    proto.code[idx] = _pack(iop, ia + 1, ib)
-
-        # Update safe_positions to account for insertion
-        safe_positions = [p + 1 if p >= pos else p for p in safe_positions]
-        safe_positions.append(pos + 1)  # the junk itself is also a safe point after
+        pos=min(rng.choice(safe),len(proto.code))
+        proto.code.insert(pos,op.junk(rng))
+        # Re-patch sBx jumps
+        for idx,raw in enumerate(proto.code):
+            nm=op.name(raw&0xFF)
+            if nm not in _JMP_OPS: continue
+            _,a,bx=unpack_bx(raw)
+            sbx=bx-BX_BIAS
+            target=idx+1+sbx
+            if idx<pos<=target: sbx+=1
+            elif target<pos<=idx: sbx-=1
+            else: continue
+            proto.code[idx]=pack_bx(raw&0xFF,a,sbx+BX_BIAS)
+        safe=[p+1 if p>=pos else p for p in safe]
+        safe.append(pos+1)
 
     for child in proto.protos:
-        _inject_junk(child, op, rng, density)
+        _inject_junk(child,op,rng,density)
 
 def _node_name(node):
-    """Extract a readable name string from a Name/Field/Index AST node."""
-    if node is None: return "?"
-    t = type(node).__name__
-    if t == "Name":   return node.id
-    if t == "Field":  return f"{_node_name(node.value)}.{node.key.id}"
-    if t == "Index":  return f"{_node_name(node.value)}[...]"
+    if node is None: return '?'
+    t=type(node).__name__
+    if t=='Name': return node.id
+    if t=='Field': return f'{_node_name(node.value)}.{node.key.id}'
     return t
