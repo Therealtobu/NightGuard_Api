@@ -129,8 +129,8 @@ def assemble_vm(script_source: str) -> str:
         layer2,
     ]
 
-    vm_source = "
-".join(parts)
+    vm_source = "\n".join(parts)
+
 
     # ── Inject line checks ────────────────────────────────────────────────────
     vm_source = inject_linechecks(vm_source)
