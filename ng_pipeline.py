@@ -56,53 +56,46 @@ def obfuscate_v4(source:str,
                   progress_cb=None,
                   user_id:str='anonymous',
                   obf_passes:int=2) -> str:
-    """
-    NightGuard V4 full pipeline.
-    Phases: crypto → VM assemble → VM source obfuscation → watermark → output
-    """
+    """NightGuard V4 full pipeline."""
     def _cb(stage,detail=''):
         if progress_cb: progress_cb(stage,detail)
 
     if seed is None: seed=int(time.time()*1000)&0xFFFFFFFF
-    opts=options or {}
 
-    # ── Phase 1+2: crypto + VM assemble ──────────────────────────────────────
-    _cb('v4_crypto',    'deriving per-script keys')
-    from ng_crypto.key_schedule import derive_key,derive_seed,derive_magic_token
+    # ── Crypto ────────────────────────────────────────────────────────────────
+    _cb('v4_crypto', 'deriving per-script keys')
+    from ng_crypto.key_schedule import derive_key, derive_seed
     from ng_crypto.compression  import compress
-    from ng_crypto.whitebox     import WhiteboxXOR
+    from ng_crypto.whitebox     import apply_whitebox   # function, not class
 
-    enc_key  = list(derive_key(source,32))
+    enc_key  = bytes(derive_key(source, 32))
     enc_seed = derive_seed(source)
-    magic    = derive_magic_token(source)
 
-    _cb('v4_compress',  'compressing bytecode')
-    # Compress source bytes as stand-in for compiled bytecode
-    # (in full integration, pass compiled proto bytes here)
-    raw_bytes    = source.encode('utf-8')
-    compressed   = compress(raw_bytes)
+    # ── Compress ──────────────────────────────────────────────────────────────
+    _cb('v4_compress', 'compressing bytecode')
+    compressed = compress(source.encode('utf-8'))
 
-    _cb('v4_encrypt',   'encrypting with whitebox XOR')
-    wb           = WhiteboxXOR(enc_key)
-    encrypted    = wb.encrypt(compressed)
+    # ── Encrypt ───────────────────────────────────────────────────────────────
+    _cb('v4_encrypt', 'encrypting with whitebox XOR')
+    encrypted = bytes(apply_whitebox(compressed, enc_key))
 
-    _cb('v4_cfo',       'injecting bytecode CFO')
-    from ng_transforms.cfo_bytecode import DeadCodeInjector
-    inj          = DeadCodeInjector(source)
-    enc_blob     = inj.inject(list(encrypted))
+    # ── CFO ───────────────────────────────────────────────────────────────────
+    _cb('v4_cfo', 'injecting bytecode CFO')
+    from ng_transforms.cfo_bytecode import BytecodeCFO
+    cfo      = BytecodeCFO(dead_op=0xFE, nop_op=0xFD, jmp_op=0xFC,
+                           inject_rate=5, seed=enc_seed)
+    enc_blob = cfo.inject_dead_code(list(encrypted))
 
-    _cb('v4_vm_assemble','assembling VM')
-    from ng_generator.vm_assembler import assemble_vm
-
-    _cb('v4_vm_obf',    'obfuscating VM source (Phase 3)')
+    # ── VM assemble + obfuscate + watermark ───────────────────────────────────
+    _cb('v4_vm_assemble', 'assembling VM')
+    _cb('v4_vm_obf',      'obfuscating VM source')
+    _cb('v4_watermark',   f'injecting watermark for {user_id!r}')
     from ng_generator.pipeline_obfuscator import full_v4_pipeline
-
-    _cb('v4_watermark', f'injecting watermark for {user_id!r}')
     output = full_v4_pipeline(
         source,
         enc_blob,
         user_id=user_id,
-        obf_passes=obf_passes
+        obf_passes=obf_passes,
     )
 
     _cb('v4_done', f'{len(output):,} chars')
