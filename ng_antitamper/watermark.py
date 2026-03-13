@@ -9,7 +9,7 @@ import hmac
 import random
 import re
 
-_VERSION_SECRET = b"NightGuard_V4_2025"
+_VERSION_SECRET = b"NightGuard_V4_2026"
 
 def generate_watermark(user_id: str, script_source: str) -> bytes:
     """Generate unique 16-byte watermark for user + script."""
@@ -24,18 +24,27 @@ def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
     """
     Inject watermark as arithmetic junk locals hidden in VM source.
     Each watermark byte stored as: local _NG_wmXXXXX = (enc) ~ (mask)
+    Injects every N lines regardless of blank lines (survives obfuscation).
     """
     rng      = random.Random(int.from_bytes(wm[:8], "big"))
     lines    = vm_source.split("\n")
-    result   = []
-    wm_index = 0
+    total    = len(lines)
     wm_bytes = list(wm)
+    n        = len(wm_bytes)
 
+    # Spread injection points evenly across file
+    if total < n:
+        interval = 1
+    else:
+        interval = total // (n + 1)
+
+    inject_at = {(i + 1) * interval: i for i in range(n)}
+
+    result = []
     for i, line in enumerate(lines):
         result.append(line)
-        if (i % 47 == 0 and
-                wm_index < len(wm_bytes) and
-                line.strip() == ""):
+        if i in inject_at:
+            wm_index = inject_at[i]
             byte    = wm_bytes[wm_index]
             mask    = rng.randint(1, 127)
             encoded = byte ^ mask
@@ -44,7 +53,6 @@ def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
                 f"local {v}=({encoded})~({mask})--NG_WM_{wm_index}"
             )
             result.append(f"{v}=nil")
-            wm_index += 1
 
     return "\n".join(result)
 
