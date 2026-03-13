@@ -1,7 +1,7 @@
 import sys,os;sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 """NightGuard V3 — Register VM Generator
 Full register-based VM. Instruction format: op|A|B|C (each 8-bit) or op|A|Bx (16-bit).
-RK(x): x >= 256 → K[x-256], else R[x].
+RK(x): x >= 128 → K[x-128], else R[x].
 
 Generated Lua is intentionally verbose — multiline handlers, fake local vars,
 anti-analysis noise — making static analysis difficult.
@@ -75,6 +75,9 @@ local function __IX_RDR__(b)
   function R.u8()
     local v = b[p]; p = p + 1; return v
   end
+  function R.pos() return p end
+  function R.setpos(v) p = v end
+  function R.rem() return (#b - p + 1) end
   function R.u32()
     local a, b2, c, d = b[p], b[p+1], b[p+2], b[p+3]
     p = p + 4
@@ -146,17 +149,32 @@ local function __IX_LDP__(R)
       local n = R.u32()
       local e = {}
       for j = 1, n do e[j] = R.u8() end
-      local nc2 = R.u8()
+      local legacy = false
+      local p0 = R.pos(); local nc2 = R.u32()
+      if nc2 > math.floor(R.rem() / 8) then
+        R.setpos(p0); nc2 = R.u8(); legacy = true
+      end
       local ch = {}
       for j = 1, nc2 do
         local s = R.u32(); local l = R.u32()
         ch[j] = {s, l}
       end
-      local nn = R.u8()
+      p0 = R.pos(); local nn = R.u32()
+      if nn > math.floor(R.rem() / 8) then
+        R.setpos(p0); nn = R.u8(); legacy = true
+      end
       for j = 1, nn do R.u32(); R.u32() end
-      local no = R.u8()
+      local no
+      if legacy then
+        no = R.u8()
+      else
+        p0 = R.pos(); no = R.u32()
+        if no > math.floor(R.rem() / 4) then
+          R.setpos(p0); no = R.u8(); legacy = true
+        end
+      end
       local ord = {}
-      for j = 1, no do ord[j] = R.u8() end
+      for j = 1, no do ord[j] = legacy and R.u8() or R.u32() end
       p.k[i] = __IX_DSC__(e, sd, st, sk, ch, ord)
     end
   end
@@ -171,9 +189,14 @@ end
 
 __IX_OPENC__
 
-local function __IX_EXE__(proto, env, vararg)
+local function __IX_EXE__(proto, env, vararg, args)
   local R = {}
   for i = 0, proto.mr + 8 do R[i] = nil end
+  if args then
+    for i = 1, #args do
+      R[i - 1] = args[i]
+    end
+  end
   local K  = proto.k
   local P  = proto.pr
   local CD = proto.code
@@ -186,8 +209,8 @@ local function __IX_EXE__(proto, env, vararg)
   local __IX_FD__ = false
 
   local function RK(x)
-    if x >= 256 then
-      return K[(x - 256) + 1]
+    if x >= 128 then
+      return K[(x - 128) + 1]
     else
       return R[x]
     end
@@ -197,17 +220,17 @@ __IX_DT_DEF__
 
   while pc <= #CD do
     local ins = CD[pc]; pc = pc + 1
-    local op  = ins & 0xFF
-    local a   = (ins >> 8)  & 0xFF
-    local b   = (ins >> 16) & 0xFF
-    local c   = (ins >> 24) & 0xFF
-    local bx  = (ins >> 16) & 0xFFFF
+    local op  = ins % 256
+    local a   = math.floor(ins / 256) % 256
+    local b   = math.floor(ins / 65536) % 256
+    local c   = math.floor(ins / 16777216) % 256
+    local bx  = math.floor(ins / 65536) % 65536
     local sbx = bx - 32767
 
     -- Fake state mutation (anti-tracing)
     __IX_FA__ = (__IX_FA__ * 1103515245 + 12345) % 0x80000000
     __IX_FB__ = __IX_FA__ % 256
-    __IX_FC__ = __IX_FB__ ~ op
+    __IX_FC__ = __IX_XOR__(__IX_FB__, op)
 
     local nm = __IX_OP__[op]
     if op == __IX_RET_ID__ then
@@ -217,7 +240,7 @@ __IX_DT_DEF__
       if b == 1 then return end
       local rv = {}
       for i = 0, n - 1 do rv[i+1] = R[a + i] end
-      return table.unpack(rv, 1, n)
+      return (table.unpack or unpack)(rv, 1, n)
     elseif nm ~= nil then
       local h = __IX_DT__[nm]
       if h then
@@ -275,15 +298,12 @@ __OX_CHK__()
 
 local function __OX_DEC__(bc, key, sd)
   local kl = #key
-  local tmp = {}
-  for i = 1, #bc do
-    tmp[i] = __OX_XOR__(bc[i], key[((i-1) % kl) + 1])
-  end
   local out = {}
   local k = sd
-  for i = 1, #tmp do
-    local e = tmp[i]
-    out[i] = __OX_XOR__(e, k)
+  for i = 1, #bc do
+    local e = bc[i]
+    local t = __OX_XOR__(e, k)
+    out[i] = __OX_XOR__(t, key[((i-1) % kl) + 1])
     k = (k * 13 + e) % 256
     if k == 0 then k = 1 end
   end
@@ -296,6 +316,9 @@ local function __OX_RDR__(b)
   function R.u8()
     local v = b[p]; p = p + 1; return v
   end
+  function R.pos() return p end
+  function R.setpos(v) p = v end
+  function R.rem() return (#b - p + 1) end
   function R.u32()
     local a, b2, c, d = b[p], b[p+1], b[p+2], b[p+3]
     p = p + 4
@@ -367,17 +390,32 @@ local function __OX_LDP__(R)
       local n = R.u32()
       local e = {}
       for j = 1, n do e[j] = R.u8() end
-      local nc2 = R.u8()
+      local legacy = false
+      local p0 = R.pos(); local nc2 = R.u32()
+      if nc2 > math.floor(R.rem() / 8) then
+        R.setpos(p0); nc2 = R.u8(); legacy = true
+      end
       local ch = {}
       for j = 1, nc2 do
         local s = R.u32(); local l = R.u32()
         ch[j] = {s, l}
       end
-      local nn = R.u8()
+      p0 = R.pos(); local nn = R.u32()
+      if nn > math.floor(R.rem() / 8) then
+        R.setpos(p0); nn = R.u8(); legacy = true
+      end
       for j = 1, nn do R.u32(); R.u32() end
-      local no = R.u8()
+      local no
+      if legacy then
+        no = R.u8()
+      else
+        p0 = R.pos(); no = R.u32()
+        if no > math.floor(R.rem() / 4) then
+          R.setpos(p0); no = R.u8(); legacy = true
+        end
+      end
       local ord = {}
-      for j = 1, no do ord[j] = R.u8() end
+      for j = 1, no do ord[j] = legacy and R.u8() or R.u32() end
       p.k[i] = __IX_DSC_REF__(e, sd, st, sk, ch, ord)
     end
   end
@@ -399,7 +437,7 @@ _N_vm = function(bc1, bc2, bc3, key, seed)
   local rdr   = __OX_RDR__(dec)
   local proto = __OX_LDP__(rdr)
   local env   = getfenv and getfenv(0) or _G
-  __IX_EXE_REF__(proto, env, {})
+  __IX_EXE_REF__(proto, env, {}, {})
 end
 """
 
@@ -655,7 +693,7 @@ def _build_dispatch(dt, dm, imap, opcodes, rng):
         f'end',
         f'local {n5} = c - 1',
         f'if {n5} < 0 then {n5} = 0 end',
-        f'local {n6} = {{{n1}(table.unpack({n3}))}}',
+        f'local {n6} = {{{n1}((table.unpack or unpack)({n3}))}}',
         f'for {n4} = 0, {n5} - 1 do',
         f'  R[a + {n4}] = {n6}[{n4} + 1]',
         f'end',
@@ -669,7 +707,7 @@ def _build_dispatch(dt, dm, imap, opcodes, rng):
         f'for {n3} = 1, b - 1 do',
         f'  {n2}[{n3}] = R[a + {n3}]',
         f'end',
-        f'return {n1}(table.unpack({n2}))',
+        f'return {n1}((table.unpack or unpack)({n2}))',
     ])
 
     # ── VARARG ──────────────────────────────────────────────────────────────
@@ -701,7 +739,7 @@ def _build_dispatch(dt, dm, imap, opcodes, rng):
         f'      {n7}[#{n7} + 1] = {n4}[{n6}]',
         f'    end',
         f'  end',
-        f'  return {exe}({n1}, env, {n7})',
+        f'  return {exe}({n1}, env, {n7}, {n5})',
         f'end',
     ])
 

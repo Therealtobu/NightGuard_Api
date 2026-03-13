@@ -67,11 +67,11 @@ class _Ctx:
     # ── RK helpers ────────────────────────────────────────────────────────────
     def _rk_literal(self,node):
         """Return RK-encoded const if node is a literal, else None."""
-        if isinstance(node,N.Number):  k=self.proto.add_const(node.n);   return rk(k) if k<256 else None
-        if isinstance(node,N.String):  k=self.proto.add_const(node.s);   return rk(k) if k<256 else None
-        if isinstance(node,N.NilExpr): k=self.proto.add_const(None);     return rk(k) if k<256 else None
-        if isinstance(node,N.TrueExpr): k=self.proto.add_const(True);    return rk(k) if k<256 else None
-        if isinstance(node,N.FalseExpr):k=self.proto.add_const(False);   return rk(k) if k<256 else None
+        if isinstance(node,N.Number):  k=self.proto.add_const(node.n);   return rk(k) if k<128 else None
+        if isinstance(node,N.String):  k=self.proto.add_const(node.s);   return rk(k) if k<128 else None
+        if isinstance(node,N.NilExpr): k=self.proto.add_const(None);     return rk(k) if k<128 else None
+        if isinstance(node,N.TrueExpr): k=self.proto.add_const(True);    return rk(k) if k<128 else None
+        if isinstance(node,N.FalseExpr):k=self.proto.add_const(False);   return rk(k) if k<128 else None
         return None
 
     def expr_rk(self,node):
@@ -129,7 +129,7 @@ class _Ctx:
         obj=self.expr(n.value)
         k=self.proto.add_const(n.key.id)
         # GETTABLE R[r] = R[obj][RK(k)]
-        self.abc('GETTABLE',r,obj,rk(k) if k<256 else (lambda t: (self.bx('LOADK',t,k),t)[1])(self.regs.alloc()))
+        self.abc('GETTABLE',r,obj,rk(k) if k<128 else (lambda t: (self.bx('LOADK',t,k),t)[1])(self.regs.alloc()))
         if obj!=r: self.regs.free(obj)
         return r
 
@@ -238,13 +238,20 @@ class _Ctx:
         base=self.regs.top
         obj=self.expr(n.source,base); self.regs._top=max(self.regs._top,base+1)
         k=self.proto.add_const(n.func.id)
-        ck=rk(k) if k<256 else 0   # SELF uses RK(C) for method name
+        if k < 128:
+            ck = rk(k)  # SELF uses RK(C) for method name
+            ctmp = None
+        else:
+            ctmp = self.regs.alloc()
+            self.bx('LOADK', ctmp, k)
+            ck = ctmp
         self.abc('SELF',base,obj,ck)
         self.regs._top=base+2
         for arg in n.args:
             ar=self.regs.alloc(); self.expr(arg,ar)
         nret=1 if dest is not None else 0
         self.abc('CALL',base,len(n.args)+2,nret+1)
+        if ctmp is not None: self.regs.free(ctmp)
         self.regs.free_to(base+nret)
         if nret and dest is not None and dest!=base:
             self.abc('MOVE',dest,base); self.regs.free(base); return dest
@@ -255,9 +262,16 @@ class _Ctx:
         arr=0
         for f in n.fields:
             if isinstance(f,N.TableField):
-                kk=rk(self.proto.add_const(f.key.id))
+                kk_i=self.proto.add_const(f.key.id)
+                kk=rk(kk_i) if kk_i < 128 else None
                 vr=self.regs.alloc(); self.expr(f.value,vr)
-                self.abc('SETTABLE',r,kk,vr); self.regs.free(vr)
+                if kk is not None:
+                    self.abc('SETTABLE',r,kk,vr)
+                else:
+                    kt=self.regs.alloc(); self.bx('LOADK',kt,kk_i)
+                    self.abc('SETTABLE',r,kt,vr)
+                    self.regs.free(kt)
+                self.regs.free(vr)
             elif isinstance(f,N.TableIndex):
                 kv,ktmp=self.expr_rk(f.key)
                 vr=self.regs.alloc(); self.expr(f.value,vr)
@@ -265,9 +279,17 @@ class _Ctx:
                 self.regs.free(vr)
                 if ktmp is not None: self.regs.free(ktmp)
             else:
-                arr+=1; kk=rk(self.proto.add_const(arr))
+                arr+=1
+                kk_i=self.proto.add_const(arr)
+                kk=rk(kk_i) if kk_i < 128 else None
                 vr=self.regs.alloc(); self.expr(f,vr)
-                self.abc('SETTABLE',r,kk,vr); self.regs.free(vr)
+                if kk is not None:
+                    self.abc('SETTABLE',r,kk,vr)
+                else:
+                    kt=self.regs.alloc(); self.bx('LOADK',kt,kk_i)
+                    self.abc('SETTABLE',r,kt,vr)
+                    self.regs.free(kt)
+                self.regs.free(vr)
         return r
 
     def _e_AnonymousFunction(self,n,dest):
@@ -315,8 +337,16 @@ class _Ctx:
             else:
                 k=self.proto.add_const(tgt.id); self.bx('SETGLOBAL',src,k)
         elif isinstance(tgt,N.Field):
-            obj=self.expr(tgt.value); k=rk(self.proto.add_const(tgt.key.id))
-            self.abc('SETTABLE',obj,k,src); self.regs.free(obj)
+            obj=self.expr(tgt.value)
+            ki=self.proto.add_const(tgt.key.id)
+            k=rk(ki) if ki < 128 else None
+            if k is not None:
+                self.abc('SETTABLE',obj,k,src)
+            else:
+                kt=self.regs.alloc(); self.bx('LOADK',kt,ki)
+                self.abc('SETTABLE',obj,kt,src)
+                self.regs.free(kt)
+            self.regs.free(obj)
         elif isinstance(tgt,N.Index):
             obj=self.expr(tgt.value); kv,ktmp=self.expr_rk(tgt.key)
             self.abc('SETTABLE',obj,kv,src)
@@ -340,10 +370,19 @@ class _Ctx:
     def _s_Invoke(self,n):
         base=self.regs.top
         obj=self.expr(n.source,base); self.regs._top=max(self.regs._top,base+1)
-        k=self.proto.add_const(n.func.id); ck=rk(k) if k<256 else 0
+        k=self.proto.add_const(n.func.id)
+        if k < 128:
+            ck = rk(k)
+            ctmp = None
+        else:
+            ctmp = self.regs.alloc()
+            self.bx('LOADK', ctmp, k)
+            ck = ctmp
         self.abc('SELF',base,obj,ck); self.regs._top=base+2
         for arg in n.args: ar=self.regs.alloc(); self.expr(arg,ar)
-        self.abc('CALL',base,len(n.args)+2,1); self.regs.free_to(base)
+        self.abc('CALL',base,len(n.args)+2,1)
+        if ctmp is not None: self.regs.free(ctmp)
+        self.regs.free_to(base)
 
     def _s_Do(self,n):  self.compile_block(n.body)
     def _s_Block(self,n): self.compile_block(n)
@@ -448,8 +487,15 @@ class _Ctx:
         args=[N.Name('self')]+n.args
         sub=self._fn(args,n.body,n.name.id)
         r=self.regs.alloc(); self.bx('CLOSURE',r,self.proto.add_proto(sub))
-        obj=self.expr(n.source); k=rk(self.proto.add_const(n.name.id))
-        self.abc('SETTABLE',obj,k,r)
+        obj=self.expr(n.source)
+        ki=self.proto.add_const(n.name.id)
+        k=rk(ki) if ki < 128 else None
+        if k is not None:
+            self.abc('SETTABLE',obj,k,r)
+        else:
+            kt=self.regs.alloc(); self.bx('LOADK',kt,ki)
+            self.abc('SETTABLE',obj,kt,r)
+            self.regs.free(kt)
         self.regs.free(obj); self.regs.free(r)
 
     def _fn(self,args,body,name='?')->Proto:

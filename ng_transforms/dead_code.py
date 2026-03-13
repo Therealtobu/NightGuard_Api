@@ -21,10 +21,9 @@ def _dead_block(rng,depth=0):
     stmts=[_dead_assign(rng)]
     if depth<2 and rng.random()<0.3:
         # Nested dead-if inside dead block
-        stmts.append(N.If(_opaque_false(rng),N.Block([_dead_assign(rng)]),[]))
-    if rng.random()<0.2:
-        # Fake while(false) loop
-        stmts.append(N.While(_opaque_false(rng),N.Block([_dead_assign(rng)])))
+        stmts.append(N.If(N.FalseExpr(),N.Block([_dead_assign(rng)]),[]))
+    # Avoid loop-based dead blocks: if an opaque-false predicate is
+    # miscompiled/altered by later passes, loop constructs can hang runtime.
     return N.Block(stmts)
 
 class DeadCodePass:
@@ -43,17 +42,18 @@ class DeadCodePass:
         for s in n.body:
             v=self.visit(s)
             if v is None: continue
+            vt=type(v).__name__
             # Insert dead block before
             if self._rng.random()<self._ip:
-                new.append(N.If(_opaque_false(self._rng),_dead_block(self._rng),[]))
+                new.append(N.If(N.FalseExpr(),_dead_block(self._rng),[]))
             # Wrap in opaque true
-            if self._rng.random()<self._wp:
-                new.append(N.If(_opaque_true(self._rng),N.Block([v]),[]))
+            if vt not in {'LocalAssign','LocalFunction'} and self._rng.random()<self._wp:
+                new.append(N.If(N.TrueExpr(),N.Block([v]),[]))
             else:
                 new.append(v)
         # End dead block
         if self._rng.random()<self._ep:
-            new.append(N.If(_opaque_false(self._rng),_dead_block(self._rng),[]))
+            new.append(N.If(N.FalseExpr(),_dead_block(self._rng),[]))
         return N.Block(new)
 
     def _v_If(self,n):
