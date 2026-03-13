@@ -1,7 +1,7 @@
 import sys,os;sys.path.insert(0,os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 """NightGuard V3 — Register VM Generator
 Full register-based VM. Instruction format: op|A|B|C (each 8-bit) or op|A|Bx (16-bit).
-RK(x): x >= 256 → K[x-256], else R[x].
+RK(x): x >= 128 → K[x-128], else R[x].
 
 Generated Lua is intentionally verbose — multiline handlers, fake local vars,
 anti-analysis noise — making static analysis difficult.
@@ -184,9 +184,14 @@ end
 
 __IX_OPENC__
 
-local function __IX_EXE__(proto, env, vararg)
+local function __IX_EXE__(proto, env, vararg, args)
   local R = {}
   for i = 0, proto.mr + 8 do R[i] = nil end
+  if args then
+    for i = 1, #args do
+      R[i - 1] = args[i]
+    end
+  end
   local K  = proto.k
   local P  = proto.pr
   local CD = proto.code
@@ -199,8 +204,8 @@ local function __IX_EXE__(proto, env, vararg)
   local __IX_FD__ = false
 
   local function RK(x)
-    if x >= 256 then
-      return K[(x - 256) + 1]
+    if x >= 128 then
+      return K[(x - 128) + 1]
     else
       return R[x]
     end
@@ -230,7 +235,7 @@ __IX_DT_DEF__
       if b == 1 then return end
       local rv = {}
       for i = 0, n - 1 do rv[i+1] = R[a + i] end
-      return table.unpack(rv, 1, n)
+      return (table.unpack or unpack)(rv, 1, n)
     elseif nm ~= nil then
       local h = __IX_DT__[nm]
       if h then
@@ -288,15 +293,12 @@ __OX_CHK__()
 
 local function __OX_DEC__(bc, key, sd)
   local kl = #key
-  local tmp = {}
-  for i = 1, #bc do
-    tmp[i] = __OX_XOR__(bc[i], key[((i-1) % kl) + 1])
-  end
   local out = {}
   local k = sd
-  for i = 1, #tmp do
-    local e = tmp[i]
-    out[i] = __OX_XOR__(e, k)
+  for i = 1, #bc do
+    local e = bc[i]
+    local t = __OX_XOR__(e, k)
+    out[i] = __OX_XOR__(t, key[((i-1) % kl) + 1])
     k = (k * 13 + e) % 256
     if k == 0 then k = 1 end
   end
@@ -425,7 +427,7 @@ _N_vm = function(bc1, bc2, bc3, key, seed)
   local rdr   = __OX_RDR__(dec)
   local proto = __OX_LDP__(rdr)
   local env   = getfenv and getfenv(0) or _G
-  __IX_EXE_REF__(proto, env, {})
+  __IX_EXE_REF__(proto, env, {}, {})
 end
 """
 
@@ -681,7 +683,7 @@ def _build_dispatch(dt, dm, imap, opcodes, rng):
         f'end',
         f'local {n5} = c - 1',
         f'if {n5} < 0 then {n5} = 0 end',
-        f'local {n6} = {{{n1}(table.unpack({n3}))}}',
+        f'local {n6} = {{{n1}((table.unpack or unpack)({n3}))}}',
         f'for {n4} = 0, {n5} - 1 do',
         f'  R[a + {n4}] = {n6}[{n4} + 1]',
         f'end',
@@ -695,7 +697,7 @@ def _build_dispatch(dt, dm, imap, opcodes, rng):
         f'for {n3} = 1, b - 1 do',
         f'  {n2}[{n3}] = R[a + {n3}]',
         f'end',
-        f'return {n1}(table.unpack({n2}))',
+        f'return {n1}((table.unpack or unpack)({n2}))',
     ])
 
     # ── VARARG ──────────────────────────────────────────────────────────────
@@ -727,7 +729,7 @@ def _build_dispatch(dt, dm, imap, opcodes, rng):
         f'      {n7}[#{n7} + 1] = {n4}[{n6}]',
         f'    end',
         f'  end',
-        f'  return {exe}({n1}, env, {n7})',
+        f'  return {exe}({n1}, env, {n7}, {n5})',
         f'end',
     ])
 

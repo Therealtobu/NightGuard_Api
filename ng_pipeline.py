@@ -39,10 +39,11 @@ class TransformPipeline:
             self._enc_pass=enc
         # 6. Dead code — before CF so dead branches get flattened too
         if opts.get('dead_code',True):
-            self._passes.append(DeadCodePass(rng))
+            self._passes.append(DeadCodePass(rng,insert_prob=0.20,wrap_prob=0.0,end_prob=0.12))
         # 7. Control flow flattening LAST — state machine on fully-transformed AST
         if opts.get('control_flow',True):
-            self._passes.append(ControlFlowPass(rng))
+            # Keep control-flow enabled by default with moderate flattening.
+            self._passes.append(ControlFlowPass(rng,flatten_prob=0.30,guard_prob=0.08,dead_prob=0.08))
 
     def run(self,block):
         node=block

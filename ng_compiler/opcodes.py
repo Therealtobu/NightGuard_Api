@@ -5,7 +5,7 @@ Instruction format (32-bit):
   OP [7:0]  A [15:8]  Bx[31:16]          (wide immediate)
   OP [7:0]  A [15:8]  sBx[31:16]         (signed, biased by 0x7FFF)
 
-RK(x): if x & 0x100 → constant K[x & 0xFF], else register R[x]
+RK(x): if x & 0x80 → constant K[x & 0x7F], else register R[x]
 """
 import random
 
@@ -59,7 +59,7 @@ _FAKE = {'JUNK','JUNK2','JUNK3'}
 # Bit widths
 OP_W=8; A_W=8; B_W=8; C_W=8
 BX_W=16; BX_BIAS=0x7FFF
-RK_BIT=0x100  # bit that marks RK as constant
+RK_BIT=0x80   # bit that marks RK as constant (7-bit const index in B/C)
 
 def pack(op,a,b,c):   return (c&0xFF)<<24|(b&0xFF)<<16|(a&0xFF)<<8|(op&0xFF)
 def pack_bx(op,a,bx): return (bx&0xFFFF)<<16|(a&0xFF)<<8|(op&0xFF)

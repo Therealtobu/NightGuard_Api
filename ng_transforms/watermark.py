@@ -36,25 +36,26 @@ def _antitamper_check_node(rng):
     and that the environment is clean. If tampered, triggers infinite loop.
     """
     # local __chk = function()
-    #   if type(math.floor) ~= "function" then
+    #   if pcall == nil or math == nil or math.floor == nil then
     #     local t={} repeat t[#t+1]=0 until #t>99999 end
     #   end
     # end
     # __chk()
-    v=f'_ng{"".join(random.choices("lIO01",k=8))}'
+    v=f'_ng{"".join(rng.choices("lIO01",k=8))}'
     trap_body=N.Block([
-        N.LocalAssign([N.Name('_t')],[N.Table([])]),
+        N.LocalAssign([N.Name('_t')],[N.Number(0)]),
         N.While(
             N.BinOp('<',N.Name('_t'),N.Number(99999)),
             N.Block([N.Assign([N.Name('_t')],[N.BinOp('+',N.Name('_t'),N.Number(1))])])
         )
     ])
+    # Deterministic anti-tamper check: if core runtime primitives are replaced,
+    # trigger trap path.
     check=N.If(
         N.BinOp('~=',
             N.Call(N.Name('type'),[N.Field(N.Name('math'),N.Name('floor'))]),
             N.String('function')),
-        trap_body,[]
-    )
+        trap_body,[])
     fn=N.LocalFunction(N.Name(v),[],N.Block([check]))
     call=N.Call(N.Name(v),[])
     return [fn,N.Call(N.Name(v),[])]

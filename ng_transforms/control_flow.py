@@ -101,8 +101,27 @@ def _flatten_block(stmts,rng):
     """
     if len(stmts)<2: return stmts   # not worth flattening
 
-    # Assign random state IDs to real statements + exit
-    state_ids=[rng.randint(10000,99999) for _ in range(len(stmts)+1)]
+    # Flattening executes statements inside branch blocks; local declarations
+    # would change scope/lifetime and can break semantics. Skip unsafe blocks.
+    unsafe_stmt_types = {
+        'LocalAssign', 'LocalFunction', 'Function', 'Method',
+        'If', 'While', 'Repeat', 'Do', 'Fornumeric', 'Forin',
+        'Return', 'Break',
+    }
+    for s in stmts:
+        if type(s).__name__ in unsafe_stmt_types:
+            return stmts
+
+    # Assign UNIQUE random state IDs to real statements + exit.
+    # Collisions can break dispatch ordering or skip execution entirely.
+    used=set()
+    state_ids=[]
+    for _ in range(len(stmts)+1):
+        sid=rng.randint(10000,99999)
+        while sid in used:
+            sid=rng.randint(10000,99999)
+        used.add(sid)
+        state_ids.append(sid)
     exit_id=state_ids[-1]
 
     # State var
@@ -111,7 +130,11 @@ def _flatten_block(stmts,rng):
     noise_states=[]
     for _ in range(len(stmts)):
         if rng.random()<0.4:
-            noise_states.append(rng.randint(10000,99999))
+            nid=rng.randint(10000,99999)
+            while nid in used:
+                nid=rng.randint(10000,99999)
+            used.add(nid)
+            noise_states.append(nid)
         else:
             noise_states.append(None)
 
@@ -130,24 +153,22 @@ def _flatten_block(stmts,rng):
                 stmt,
                 N.Assign([N.Name(sv)],[N.Number(ns)]),
             ]
-            noise_branch=N.If(
-                N.BinOp('==',N.Name(sv),N.Number(ns)),
-                N.Block([
-                    _junk_stmt(rng),
-                    N.Assign([N.Name(sv)],[N.Number(nid)])
-                ]),[])
-            real_branch=N.If(
-                N.BinOp('==',N.Name(sv),N.Number(sid)),
-                N.Block(body_stmts),[])
-            branches.append(real_branch)
-            branches.append(noise_branch)
+            branches.append((N.BinOp('==',N.Name(sv),N.Number(sid)), N.Block(body_stmts)))
+            branches.append((N.BinOp('==',N.Name(sv),N.Number(ns)), N.Block([
+                _junk_stmt(rng),
+                N.Assign([N.Name(sv)],[N.Number(nid)])
+            ])))
         else:
             body_stmts=[stmt,N.Assign([N.Name(sv)],[N.Number(nid)])]
-            branches.append(N.If(
-                N.BinOp('==',N.Name(sv),N.Number(sid)),
-                N.Block(body_stmts),[]))
+            branches.append((N.BinOp('==',N.Name(sv),N.Number(sid)), N.Block(body_stmts)))
 
-    loop_body=N.Block(branches)
+    # IMPORTANT: dispatch must be if/elseif chain (single branch per tick),
+    # not independent if statements, otherwise changing `sv` in one branch
+    # can trigger another branch in the same loop iteration and break ordering.
+    head_test, head_block = branches[0]
+    orelse = [N.ElseIf(t, b) for (t, b) in branches[1:]]
+    dispatch = N.If(head_test, head_block, orelse)
+    loop_body=N.Block([dispatch])
     init=N.LocalAssign([N.Name(sv)],[N.Number(state_ids[0])])
     loop=N.While(N.BinOp('~=',N.Name(sv),N.Number(exit_id)),loop_body)
     return [init,loop]
@@ -179,17 +200,18 @@ class ControlFlowPass:
         # Apply opaque guards + dead noise to individual statements
         new=[]
         for s in stmts:
+            st=type(s).__name__
             # Dead block before?
             if self._rng.random()<self._dp:
-                new.append(N.If(_opaque_false(self._rng),N.Block([_junk_stmt(self._rng)]),[]))
+                new.append(N.If(N.FalseExpr(),N.Block([_junk_stmt(self._rng)]),[]))
             # Opaque true wrap?
-            if self._rng.random()<self._gp:
-                new.append(N.If(_opaque_true(self._rng),N.Block([s]),[]))
+            if st not in {'LocalAssign','LocalFunction'} and self._rng.random()<self._gp:
+                new.append(N.If(N.TrueExpr(),N.Block([s]),[]))
             else:
                 new.append(s)
         # Dead block at end?
         if self._rng.random()<self._dp:
-            new.append(N.If(_opaque_false(self._rng),N.Block([_junk_stmt(self._rng)]),[]))
+            new.append(N.If(N.FalseExpr(),N.Block([_junk_stmt(self._rng)]),[]))
 
         # State machine flattening on the whole block?
         if len(new)>=3 and self._rng.random()<self._fp:
