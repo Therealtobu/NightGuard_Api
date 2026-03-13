@@ -164,14 +164,9 @@ local function __IX_LDP__(R)
         R.setpos(p0); nn = R.u8(); legacy = true
       end
       for j = 1, nn do R.u32(); R.u32() end
-      local no
-      if legacy then
-        no = R.u8()
-      else
-        p0 = R.pos(); no = R.u32()
-        if no > math.floor(R.rem() / 4) then
-          R.setpos(p0); no = R.u8(); legacy = true
-        end
+      p0 = R.pos(); local no = R.u32()
+      if (not legacy) and no > math.floor(R.rem() / 4) then
+        R.setpos(p0); no = R.u8(); legacy = true
       end
       local ord = {}
       for j = 1, no do ord[j] = legacy and R.u8() or R.u32() end
@@ -405,14 +400,9 @@ local function __OX_LDP__(R)
         R.setpos(p0); nn = R.u8(); legacy = true
       end
       for j = 1, nn do R.u32(); R.u32() end
-      local no
-      if legacy then
-        no = R.u8()
-      else
-        p0 = R.pos(); no = R.u32()
-        if no > math.floor(R.rem() / 4) then
-          R.setpos(p0); no = R.u8(); legacy = true
-        end
+      p0 = R.pos(); local no = R.u32()
+      if (not legacy) and no > math.floor(R.rem() / 4) then
+        R.setpos(p0); no = R.u8(); legacy = true
       end
       local ord = {}
       for j = 1, no do ord[j] = legacy and R.u8() or R.u32() end
