@@ -30,6 +30,7 @@ from ng_crypto.key_schedule import (
 )
 from ng_crypto.compression import LUA_DECOMPRESSOR
 from ng_antitamper.linecheck import inject_linechecks
+from ng_generator.lua_minifier import minify
 
 TEMPLATES_DIR = os.path.join(
     os.path.dirname(__file__), "..", "vm", "v4", "templates"
@@ -119,7 +120,6 @@ def assemble_vm(script_source: str) -> str:
 
     # ── Assemble full VM ─────────────────────────────────────────────────────
     parts = [
-        "-- NightGuard V4",
         fake_consts,
         junk_lua,
         antitamper_lua,
@@ -129,11 +129,13 @@ def assemble_vm(script_source: str) -> str:
         layer2,
     ]
 
-    vm_source = "\n\n".join(parts)
+    vm_source = "
+".join(parts)
 
     # ── Inject line checks ────────────────────────────────────────────────────
     vm_source = inject_linechecks(vm_source)
 
+    vm_source = minify(vm_source)
     return vm_source
 
 def assemble_final_output(script_source: str,
