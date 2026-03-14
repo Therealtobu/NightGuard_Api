@@ -64,9 +64,11 @@ do
         local CD  = proto.code
         local pc  = 1
 
+        env["__NG_VARARG__"] = vararg
+
         -- -- RK helper ------------------------------------------------------
         local function RK(x)
-            if x >= 256 then return K[(x - 256) + 1] end
+            if x >= 128 then return K[(x - 128) + 1] end
             return R[x]
         end
 
@@ -188,26 +190,50 @@ do
         -- CALL
         _H[_OPMAP[26]] = function(a, b, c, bx, sbx)
             local fn  = R[a]
-            local n   = b - 1
-            if n < 0 then n = 0 end
+            local n
+            if b == 0 then
+                n = 0
+                for i = a + 1, proto.mr + 8 do
+                    if R[i] == nil then break end
+                    n = n + 1
+                end
+            else
+                n = b - 1
+                if n < 0 then n = 0 end
+            end
             local argv = {}
             for i = 1, n do argv[i] = R[a + i] end
-            local ret_n = c - 1
-            if ret_n < 0 then ret_n = 0 end
             local rets = {fn((table.unpack or unpack)(argv))}
+            local ret_n
+            if c == 0 then
+                ret_n = #rets
+            else
+                ret_n = c - 1
+                if ret_n < 0 then ret_n = 0 end
+            end
             for i = 0, ret_n - 1 do R[a + i] = rets[i + 1] end
         end
         -- TAILCALL
-        _H[_OPMAP[27]] = function(a, b, c, bx, sbx)
+        _H[_OPMAP[28]] = function(a, b, c, bx, sbx)
             local fn  = R[a]
+            local n
+            if b == 0 then
+                n = 0
+                for i = a + 1, proto.mr + 8 do
+                    if R[i] == nil then break end
+                    n = n + 1
+                end
+            else
+                n = b - 1
+            end
             local argv = {}
-            for i = 1, b - 1 do argv[i] = R[a + i] end
+            for i = 1, n do argv[i] = R[a + i] end
             return fn((table.unpack or unpack)(argv))
         end
         -- RETURN
         -- Handled separately in main loop
         -- FORLOOP
-        _H[_OPMAP[29]] = function(a, b, c, bx, sbx)
+        _H[_OPMAP[32]] = function(a, b, c, bx, sbx)
             local step = R[a + 2]
             R[a] = R[a] + step
             local limit = R[a + 1]
@@ -219,12 +245,12 @@ do
             end
         end
         -- FORPREP
-        _H[_OPMAP[30]] = function(a, b, c, bx, sbx)
+        _H[_OPMAP[31]] = function(a, b, c, bx, sbx)
             R[a] = R[a] - R[a + 2]
             pc = pc + sbx
         end
         -- TFORLOOP
-        _H[_OPMAP[31]] = function(a, b, c, bx, sbx)
+        _H[_OPMAP[33]] = function(a, b, c, bx, sbx)
             local fn  = R[a]
             local s   = R[a + 1]
             local var = R[a + 2]
@@ -233,22 +259,30 @@ do
             if v1 ~= nil then
                 R[a + 2] = v1
                 for i = 1, c do R[a + 2 + i] = rets[i] end
-            else
                 pc = pc + 1
             end
         end
         -- SETLIST
-        _H[_OPMAP[32]] = function(a, b, c, bx, sbx)
+        _H[_OPMAP[34]] = function(a, b, c, bx, sbx)
             local t = R[a]
             for i = 1, b do t[i] = R[a + i] end
         end
-        -- CLOSE (no-op in our VM)
-        _H[_OPMAP[33]] = function(a, b, c, bx, sbx) end
+        -- JUNK/JUNK2/JUNK3 (no-op in VM)
+        _H[_OPMAP[35]] = function(a, b, c, bx, sbx) end
+        _H[_OPMAP[36]] = function(a, b, c, bx, sbx) end
+        _H[_OPMAP[37]] = function(a, b, c, bx, sbx) end
         -- CLOSURE
-        _H[_OPMAP[34]] = function(a, b, c, bx, sbx)
+        _H[_OPMAP[30]] = function(a, b, c, bx, sbx)
             local sub   = P[bx + 1]
             local np    = sub.np
             local va    = sub.va
+            local child_env = setmetatable({}, {__index = env})
+            local caps = sub.caps or {}
+            for i = 1, #caps do
+                local cap = caps[i]
+                local nm, rg = cap[1], cap[2]
+                child_env[nm] = R[rg]
+            end
             R[a] = function(...)
                 local passed = {...}
                 local fargs  = {}
@@ -259,13 +293,18 @@ do
                         fva[#fva + 1] = passed[i]
                     end
                 end
-                return _exec(sub, env, fva, fargs)
+                return _exec(sub, child_env, fva, fargs)
             end
         end
         -- VARARG
-        _H[_OPMAP[35]] = function(a, b, c, bx, sbx)
-            local n = b - 1
-            if n < 0 then n = #vararg end
+        _H[_OPMAP[29]] = function(a, b, c, bx, sbx)
+            local n
+            if b == 0 then
+                n = #vararg
+            else
+                n = b - 1
+                if n < 0 then n = #vararg end
+            end
             for i = 0, n - 1 do R[a + i] = vararg[i + 1] end
         end
 
@@ -295,7 +334,7 @@ do
 
             -- -- State: JUNK2 -----------------------------------------------
             elseif _STATE == _S_JUNK2 then
-                local _ = (R[0] or 0) + _junk_accum
+                local _ = ((type(R[0]) == "number") and R[0] or 0) + _junk_accum
                 _STATE = _S_DECODE
 
             -- -- State: DECODE ----------------------------------------------
@@ -312,9 +351,18 @@ do
             elseif _STATE == _S_DISPATCH then
                 if _op == _RETURN_OP then
                     -- RETURN
-                    local n = _b - 1
-                    if n < 0 then n = 0 end
                     if _b == 1 then return end
+                    local n
+                    if _b == 0 then
+                        n = 0
+                        for i = _a, proto.mr + 8 do
+                            if R[i] == nil then break end
+                            n = n + 1
+                        end
+                    else
+                        n = _b - 1
+                        if n < 0 then n = 0 end
+                    end
                     local rv = {}
                     for i = 0, n - 1 do rv[i + 1] = R[_a + i] end
                     return (table.unpack or unpack)(rv, 1, n)

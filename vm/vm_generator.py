@@ -173,6 +173,13 @@ local function __IX_LDP__(R)
       p.k[i] = __IX_DSC__(e, sd, st, sk, ch, ord)
     end
   end
+  local ncaps = R.u32()
+  p.caps = {}
+  for i = 1, ncaps do
+    local nm = R.str()
+    local rg = R.u8()
+    p.caps[i] = {nm, rg}
+  end
   local np = R.u32()
   p.pr = {}
   for i = 1, np do
@@ -196,6 +203,8 @@ local function __IX_EXE__(proto, env, vararg, args)
   local P  = proto.pr
   local CD = proto.code
   local pc = 1
+
+  env["__NG_VARARG__"] = vararg
 
   -- Anti-analysis: fake execution state vars that look like VM internals
   local __IX_FA__ = 0x5A3C
@@ -408,6 +417,13 @@ local function __OX_LDP__(R)
       for j = 1, no do ord[j] = legacy and R.u8() or R.u32() end
       p.k[i] = __IX_DSC_REF__(e, sd, st, sk, ch, ord)
     end
+  end
+  local ncaps = R.u32()
+  p.caps = {}
+  for i = 1, ncaps do
+    local nm = R.str()
+    local rg = R.u8()
+    p.caps[i] = {nm, rg}
   end
   local np = R.u32()
   p.pr = {}
@@ -712,24 +728,30 @@ def _build_dispatch(dt, dm, imap, opcodes, rng):
     ])
 
     # ── CLOSURE ─────────────────────────────────────────────────────────────
-    n1, n2, n3, n4, n5, n6, n7 = nv(), nv(), nv(), nv(), nv(), nv(), nv()
+    n1, n2, n3, n4, n5, n6, n7, n8, n9, n10, n11 = nv(), nv(), nv(), nv(), nv(), nv(), nv(), nv(), nv(), nv(), nv()
     h('CLOSURE', [
         f'local {n1} = P[bx + 1]',
         f'local {n2} = {n1}.np',
         f'local {n3} = {n1}.va',
+        f'local {n4} = setmetatable({{}}, {{__index = env}})',
+        f'local {n5} = {n1}.caps or {{}}',
+        f'for {n6} = 1, #{n5} do',
+        f'  local {n7} = {n5}[{n6}]',
+        f'  {n4}[{n7}[1]] = R[{n7}[2]]',
+        f'end',
         f'R[a] = function(...)',
-        f'  local {n4} = {{...}}',
-        f'  local {n5} = {{}}',
-        f'  for {n6} = 1, {n2} do',
-        f'    {n5}[{n6}] = {n4}[{n6}]',
+        f'  local {n8} = {{...}}',
+        f'  local {n9} = {{}}',
+        f'  for {n10} = 1, {n2} do',
+        f'    {n9}[{n10}] = {n8}[{n10}]',
         f'  end',
-        f'  local {n7} = {{}}',
+        f'  local {n11} = {{}}',
         f'  if {n3} then',
-        f'    for {n6} = {n2} + 1, #{n4} do',
-        f'      {n7}[#{n7} + 1] = {n4}[{n6}]',
+        f'    for {n10} = {n2} + 1, #{n8} do',
+        f'      {n11}[#{n11} + 1] = {n8}[{n10}]',
         f'    end',
         f'  end',
-        f'  return {exe}({n1}, env, {n7}, {n5})',
+        f'  return {exe}({n1}, {n4}, {n11}, {n9})',
         f'end',
     ])
 
@@ -774,7 +796,6 @@ def _build_dispatch(dt, dm, imap, opcodes, rng):
         f'  for {n6} = 1, c do',
         f'    R[a + 2 + {n6}] = {n4}[{n6}]',
         f'  end',
-        f'else',
         f'  pc = pc + 1',
         f'end',
     ])

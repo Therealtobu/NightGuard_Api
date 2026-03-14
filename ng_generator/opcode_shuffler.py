@@ -39,15 +39,17 @@ CANONICAL_OPCODES = [
     "TEST",       # 24
     "TESTSET",    # 25
     "CALL",       # 26
-    "TAILCALL",   # 27
-    "RETURN",     # 28
-    "FORLOOP",    # 29
-    "FORPREP",    # 30
-    "TFORLOOP",   # 31
-    "SETLIST",    # 32
-    "CLOSE",      # 33
-    "CLOSURE",    # 34
-    "VARARG",     # 35
+    "RETURN",     # 27
+    "TAILCALL",   # 28
+    "VARARG",     # 29
+    "CLOSURE",    # 30
+    "FORPREP",    # 31
+    "FORLOOP",    # 32
+    "TFORLOOP",   # 33
+    "SETLIST",    # 34
+    "JUNK",       # 35
+    "JUNK2",      # 36
+    "JUNK3",      # 37
 ]
 
 NUM_OPCODES = len(CANONICAL_OPCODES)
@@ -79,7 +81,7 @@ def generate_opcode_map(script_source: str) -> dict:
 
 def get_return_op(mapping: dict) -> int:
     """Get the shuffled opcode value for RETURN."""
-    return mapping[28]  # RETURN is canonical index 28
+    return mapping[27]  # RETURN is canonical index 27
 
 def get_op(mapping: dict, name: str) -> int:
     """Get the shuffled opcode value by canonical name."""
@@ -88,12 +90,14 @@ def get_op(mapping: dict, name: str) -> int:
 
 def generate_lua_opmap(mapping: dict, var_name: str = "_NG_OP") -> str:
     """
-    Generate Lua code for opcode map table.
-    _NG_OP[canonical_index] = shuffled_opcode
+    Generate Lua table literal for opcode map values in canonical order.
+    Example: {12, 99, ...}
     """
-    entries = ", ".join(str(mapping[i]) for i in range(NUM_OPCODES))
-    lua = f"local {var_name} = {{{entries}}}\n"
-    return lua
+    first = str(mapping[0])
+    rest = ", ".join(str(mapping[i]) for i in range(1, NUM_OPCODES))
+    if rest:
+        return "{[0]=" + first + ", " + rest + "}"
+    return "{[0]=" + first + "}"
 
 def generate_reverse_map(mapping: dict) -> dict:
     """

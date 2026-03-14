@@ -39,6 +39,10 @@ def _safe_to_inject_after(line: str) -> bool:
     for kw in _UNSAFE_KEYWORDS:
         if stripped == kw or stripped.startswith(kw + " ") or stripped.startswith(kw + "("):
             return False
+    # Continuation lines (likely part of previous expression)
+    if stripped == "and" or stripped == "or" or stripped.startswith("and ") or stripped.startswith("or "):
+        return False
+
     # After lines ending with continuation operators or block openers
     for end in _UNSAFE_ENDINGS:
         if stripped == end or stripped.endswith(" " + end) or stripped.endswith("\t" + end):
@@ -47,6 +51,24 @@ def _safe_to_inject_after(line: str) -> bool:
                                                "(", "{", "[", ","):
             return False
     return True
+
+
+def _safe_line_boundary(current_line: str, next_line: str) -> bool:
+    """Return False when inserting between two lines would break Lua syntax."""
+    nxt = next_line.strip()
+    if not nxt:
+        return True
+
+    # Do not inject right before a closer: often means we're inside
+    # a table constructor / expression list and a `local` would be invalid.
+    if nxt[0] in ")}]":
+        return False
+
+    # Else/elseif/until must directly follow the previous block statement.
+    if nxt.startswith("elseif") or nxt == "else" or nxt.startswith("until"):
+        return False
+
+    return _safe_to_inject_after(current_line)
 
 
 def generate_watermark(user_id: str, script_source: str) -> bytes:
@@ -82,12 +104,16 @@ def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
         result.append(line)
         if i in inject_at:
             wm_index = inject_at[i]
-            # Safety check: do NOT inject after return/break/continue
-            if not _safe_to_inject_after(line):
+            next_line = lines[i + 1] if (i + 1) < total else ""
+            # Safety check: do not inject at syntactically unsafe boundaries.
+            if not _safe_line_boundary(line, next_line):
                 # Find next safe line to inject (scan forward up to interval lines)
                 for offset in range(1, interval):
                     future_idx = i + offset
-                    if future_idx < total and _safe_to_inject_after(lines[future_idx]):
+                    if future_idx < total:
+                        future_next = lines[future_idx + 1] if (future_idx + 1) < total else ""
+                        if not _safe_line_boundary(lines[future_idx], future_next):
+                            continue
                         # Mark for later — use deferred dict
                         inject_at[future_idx] = wm_index
                         break
@@ -97,7 +123,7 @@ def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
             encoded = byte ^ mask
             v       = "_NG_wm" + str(rng.randint(10000, 99999))
             result.append(
-                f"local {v}=bit32.bxor({encoded},{mask})--NG_WM_{wm_index}"
+                f"local {v}=((bit32 and bit32.bxor) or (bit and bit.bxor) or function(a,b) local r,m=0,1 while a>0 or b>0 do local x,y=a%2,b%2 if x~=y then r=r+m end a,b,m=math.floor(a/2),math.floor(b/2),m*2 end return r end)({encoded},{mask})--NG_WM_{wm_index}"
             )
             result.append(f"{v}=nil")
             wm_placed[wm_index] = True

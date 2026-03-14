@@ -106,9 +106,20 @@ def obfuscate_v4(source: str,
     from ng_compiler.compiler   import Compiler
     from ng_compiler.serializer import serialize_proto
 
-    opcodes  = Opcodes(seed=rng.randint(0, 2**31))
+    opcodes  = Opcodes(seed=rng.randint(0, 2**31), shuffle=False)
     compiler = Compiler(opcodes, rng, pipeline.string_table)
     proto    = compiler.compile(ast2)
+
+    # Remap compiled opcodes to match per-script V4 VM opcode shuffle.
+    from ng_generator.opcode_shuffler import generate_opcode_map, apply_mapping_to_bytecode
+    opmap = generate_opcode_map(source)
+
+    def _remap_proto_ops(p):
+        p.code = apply_mapping_to_bytecode(p.code, opmap)
+        for child in p.protos:
+            _remap_proto_ops(child)
+
+    _remap_proto_ops(proto)
 
     # ── 4. Serialize proto -> raw bytes ───────────────────────────────────────
     _cb('serialize', 'proto -> byte array')
@@ -121,23 +132,18 @@ def obfuscate_v4(source: str,
     _cb('v4_compress', f'compressing {len(raw):,} bytes')
     _cb('v4_encrypt',  'whitebox-XOR encrypt')
 
-    from ng_crypto.key_schedule import derive_key, derive_seed
     from ng_crypto.compression  import compress
-    from ng_crypto.whitebox     import apply_whitebox
-
-    # Keys derived from original source so each script is unique
-    enc_key  = bytes(derive_key(source, 32))
-    enc_seed = derive_seed(source)
+    from ng_compiler.serializer import encrypt_bytecode
 
     compressed = compress(raw)
-    encrypted  = bytes(apply_whitebox(compressed, enc_key))
+    encrypted, enc_key, enc_seed = encrypt_bytecode(compressed, rng)
 
     # ── 7. Bytecode CFO — dead/NOP injection into encrypted blob ─────────────
     _cb('v4_cfo', 'bytecode CFO injection')
     from ng_transforms.cfo_bytecode import BytecodeCFO
     cfo      = BytecodeCFO(dead_op=0xFE, nop_op=0xFD, jmp_op=0xFC,
                            inject_rate=5, seed=enc_seed)
-    enc_blob = cfo.inject_dead_code(list(encrypted))
+    enc_blob, _ = cfo.inject_dead_code(list(encrypted))
 
     # ── 8+9+10. Double VM + VM-source obfuscation + watermark ─────────────────
     _cb('v4_vm_assemble', 'assembling double VM (L1 + L2)')
@@ -150,6 +156,8 @@ def obfuscate_v4(source: str,
         enc_blob,
         user_id=user_id,
         obf_passes=obf_passes,
+        enc_key=enc_key,
+        enc_seed=enc_seed,
     )
 
     _cb('v4_done', f'{len(output):,} chars output')

@@ -29,7 +29,6 @@ from ng_crypto.key_schedule import (
     derive_state_seed
 )
 from ng_crypto.compression import LUA_DECOMPRESSOR
-from ng_antitamper.linecheck import inject_linechecks
 from ng_generator.lua_minifier import minify_and_fix as minify
 
 TEMPLATES_DIR = os.path.join(
@@ -131,9 +130,6 @@ def assemble_vm(script_source: str) -> str:
 
     vm_source = "\n".join(parts)
 
-
-    # ── Inject line checks ────────────────────────────────────────────────────
-    vm_source = inject_linechecks(vm_source)
 
     vm_source = minify(vm_source)
     return vm_source
