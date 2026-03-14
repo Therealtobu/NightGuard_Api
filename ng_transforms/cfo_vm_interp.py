@@ -93,7 +93,13 @@ _FALSE_PREDS = [
 def inject_opaque_predicates(lua_source: str,
                               script_source: str,
                               rate: int = 20) -> str:
-    """Inject opaque predicates every N lines."""
+    """
+    Inject opaque predicates every N lines.
+    Only injects after `end` at the TOP level of nesting (depth <= 1)
+    to avoid breaking nested function/do/while/if blocks.
+    Never injects after return/break/continue.
+    """
+    _UNSAFE_AFTER = ("return", "break", "continue")
     h = hmac.new(
         _VERSION_SECRET,
         hashlib.sha256(script_source.encode()).digest() + b"opaque",
@@ -102,14 +108,35 @@ def inject_opaque_predicates(lua_source: str,
     rng    = random.Random(int.from_bytes(h[:8], "big"))
     lines  = lua_source.split("\n")
     result = []
+    depth  = 0  # track block nesting depth
 
     for i, line in enumerate(lines):
         result.append(line)
         stripped = line.strip()
 
-        if (i % rate == 0 and i > 0 and
-                (stripped == "" or stripped == "end")):
+        # Track depth
+        import re as _re
+        opens  = len(_re.findall(r'\b(?:function|do|repeat)\b', stripped))
+        opens += stripped.count(" then") + stripped.count("\tthen")
+        # `if x then` adds 1 depth, `if x then y end` is net 0
+        closes = stripped.count("end")
+        depth  = max(0, depth + opens - closes)
 
+        # Safe injection: only after standalone `end` at low depth
+        # and NOT after return/break/continue
+        is_safe = (
+            stripped == "end"
+            and depth <= 1
+            and i % rate == 0
+            and i > 0
+        )
+        # Never after return/break
+        for kw in _UNSAFE_AFTER:
+            if stripped == kw or stripped.startswith(kw + " "):
+                is_safe = False
+                break
+
+        if is_safe:
             if rng.random() < 0.5:
                 pred = rng.choice(_FALSE_PREDS)
                 v    = "_NG_d" + str(rng.randint(1000, 9999))
