@@ -123,3 +123,37 @@ def minify(src: str) -> str:
     3. Return compact single-block string with no blank lines
     """
     return _strip_lua(src)
+
+
+import re as _re
+
+def fix_lua_xor(src: str) -> str:
+    """
+    Replace Lua 5.3+ ~ (bitwise XOR) with bit32.bxor() for Roblox/Luau compat.
+    Handles every pattern NightGuard generates. Never touches ~= comparisons.
+
+    Patterns covered:
+      (N)~(M)            → bit32.bxor(N,M)       -- watermark lines
+      v ~ 0 and v or s   → bit32.bxor(v,0)~=0 and v or s  -- junk template
+      word ~ word        → bit32.bxor(word,word)  -- dispatch / junk fragments
+    """
+    # P1: (N)~(M) — parens around both operands (watermark pattern)
+    P1 = _re.compile(r'\((\d+)\)\s*~\s*\((\d+)\)')
+    # P2: VAR ~ 0 and VAR or SEED  (junk template 0)
+    P2 = _re.compile(r'(\b\w+\b)\s*~\s*0\s+and\s+\1\s+or\b')
+    # P3: word ~ word  (not followed by =)
+    P3 = _re.compile(r'(\b\w+\b)\s*~(?!=)\s*(\b\w+\b)')
+
+    lines = src.split('\n')
+    out = []
+    for line in lines:
+        line = P1.sub(lambda m: f'bit32.bxor({m.group(1)},{m.group(2)})', line)
+        line = P2.sub(lambda m: f'bit32.bxor({m.group(1)},0)~=0 and {m.group(1)} or', line)
+        line = P3.sub(lambda m: f'bit32.bxor({m.group(1)},{m.group(2)})', line)
+        out.append(line)
+    return '\n'.join(out)
+
+
+def minify_and_fix(src: str) -> str:
+    """Minify Lua source AND fix all ~ XOR operators for Roblox compat."""
+    return fix_lua_xor(minify(src))
