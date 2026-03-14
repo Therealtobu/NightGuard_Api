@@ -122,6 +122,41 @@ do
         return sum
     end
 
+    local function _dec_str(e, sd, st, sk)
+        local d = {}
+        for i = 1, #e do
+            d[i] = (e[i] - (sk or 0) * i % 256 + 256) % 256
+        end
+        local k = sd
+        local c = {}
+        for i = 1, #d do
+            c[i] = string.char(_xor(d[i], k))
+            k = (k * st + d[i]) % 256
+            if k == 0 then k = 1 end
+        end
+        return table.concat(c)
+    end
+
+    local function _dec_scatter(e, sd, st, sk, chunks, order)
+        local sorted = {}
+        if order then
+            for i = 1, #order do sorted[order[i] + 1] = chunks[i] end
+        else
+            sorted = chunks
+        end
+        local raw = {}
+        local ci = 1
+        for i = 1, #sorted do
+            local ch = sorted[i]
+            local s, l = ch[1], ch[2]
+            for j = s + 1, s + l do
+                raw[ci] = e[j]
+                ci = ci + 1
+            end
+        end
+        return _dec_str(raw, sd, st, sk)
+    end
+
     -- -- Proto parser ---------------------------------------------------------
     local function _parse_proto(R)
         local p = {}
@@ -139,8 +174,49 @@ do
             elseif t == 1 then p.k[i] = R.u8() ~= 0
             elseif t == 2 then p.k[i] = R.f64()
             elseif t == 3 then p.k[i] = R.str()
+            elseif t == 4 then
+                local sd = R.u8(); local st = R.u8(); local sk = R.u8()
+                local n = R.u32()
+                local e = {}
+                for j = 1, n do e[j] = R.u8() end
+                p.k[i] = _dec_str(e, sd, st, sk)
+            elseif t == 5 then
+                local sd = R.u8(); local st = R.u8(); local sk = R.u8()
+                local n = R.u32()
+                local e = {}
+                for j = 1, n do e[j] = R.u8() end
+                local legacy = false
+                local p0 = R.pos(); local nc2 = R.u32()
+                if nc2 > math.floor(R.rem() / 8) then
+                    R.setpos(p0); nc2 = R.u8(); legacy = true
+                end
+                local ch = {}
+                for j = 1, nc2 do
+                    local s0 = R.u32(); local l0 = R.u32()
+                    ch[j] = {s0, l0}
+                end
+                p0 = R.pos(); local nn = R.u32()
+                if nn > math.floor(R.rem() / 8) then
+                    R.setpos(p0); nn = R.u8(); legacy = true
+                end
+                for j = 1, nn do R.u32(); R.u32() end
+                p0 = R.pos(); local no = R.u32()
+                if (not legacy) and no > math.floor(R.rem() / 4) then
+                    R.setpos(p0); no = R.u8(); legacy = true
+                end
+                local ord = {}
+                for j = 1, no do ord[j] = legacy and R.u8() or R.u32() end
+                p.k[i] = _dec_scatter(e, sd, st, sk, ch, ord)
             end
         end
+        local ncaps = R.u32()
+        p.caps = {}
+        for i = 1, ncaps do
+            local nm = R.str()
+            local rg = R.u8()
+            p.caps[i] = {nm, rg}
+        end
+
         local np = R.u32()
         p.pr = {}
         for i = 1, np do
@@ -155,22 +231,22 @@ do
         -- Step 1: Anti-debug check
         _antidebug()
 
-        -- Step 2: Decompress
-        local decompressed = _NG_decompress(blob)
+        -- Step 2: Decrypt
+        local decrypted = _decrypt(blob, enc_key, enc_seed)
 
-        -- Step 3: Decrypt
-        local decrypted = _decrypt(decompressed, enc_key, enc_seed)
+        -- Step 3: Decompress
+        local decompressed = _NG_decompress(decrypted)
 
         -- Step 4: Integrity check
-        local checksum = _check_integrity(decrypted)
+        local checksum = _check_integrity(decompressed)
 
         -- Step 5: Parse proto
-        local rdr   = _reader(decrypted)
+        local rdr   = _reader(decompressed)
         local proto = _parse_proto(rdr)
 
         -- Step 6: Compute handshake token
-        -- token = xor(MAGIC, xor(RUNTIME_KEY, checksum))
-        local token = _xor(_MAGIC, _xor(_RUNTIME_KEY, checksum % 0xFFFF))
+        -- token = xor(MAGIC, RUNTIME_KEY)
+        local token = _xor(_MAGIC, _RUNTIME_KEY)
 
         -- Step 7: Hand off to Layer 2
         l2_execute(proto, token, _MAGIC, _RUNTIME_KEY)
