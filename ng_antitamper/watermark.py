@@ -9,7 +9,27 @@ import hmac
 import random
 import re
 
-_VERSION_SECRET = b"NightGuard_V4_2025"
+_VERSION_SECRET = b"NightGuard_V4_2026"
+
+# Lines ending with these patterns must NOT be followed by a `local` statement
+# because it would be a Lua syntax error
+_UNSAFE_AFTER = (
+    "return",   # return ... -- no local after return
+    "break",    # break -- no local after break
+    "continue", # Luau continue
+)
+
+def _safe_to_inject_after(line: str) -> bool:
+    """Return True if it is safe to inject a `local` statement after this line."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    # Check if line starts with a control flow terminator
+    for kw in _UNSAFE_AFTER:
+        if stripped == kw or stripped.startswith(kw + " ") or stripped.startswith(kw + "("):
+            return False
+    return True
+
 
 def generate_watermark(user_id: str, script_source: str) -> bytes:
     """Generate unique 16-byte watermark for user + script."""
@@ -20,11 +40,12 @@ def generate_watermark(user_id: str, script_source: str) -> bytes:
         hashlib.sha256
     ).digest()[:16]
 
+
 def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
     """
     Inject watermark as arithmetic junk locals hidden in VM source.
     Each watermark byte stored as: local _NG_wmXXXXX = bit32.bxor(enc,mask)
-    Injects every N lines regardless of blank lines (survives obfuscation).
+    Skips injection after return/break/continue to avoid syntax errors.
     """
     rng      = random.Random(int.from_bytes(wm[:8], "big"))
     lines    = vm_source.split("\n")
@@ -33,18 +54,26 @@ def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
     n        = len(wm_bytes)
 
     # Spread injection points evenly across file
-    if total < n:
-        interval = 1
-    else:
-        interval = total // (n + 1)
-
+    interval = max(1, total // (n + 1))
     inject_at = {(i + 1) * interval: i for i in range(n)}
 
-    result = []
+    result    = []
+    wm_placed = {}  # track which wm indices were placed
+
     for i, line in enumerate(lines):
         result.append(line)
         if i in inject_at:
             wm_index = inject_at[i]
+            # Safety check: do NOT inject after return/break/continue
+            if not _safe_to_inject_after(line):
+                # Find next safe line to inject (scan forward up to interval lines)
+                for offset in range(1, interval):
+                    future_idx = i + offset
+                    if future_idx < total and _safe_to_inject_after(lines[future_idx]):
+                        # Mark for later — use deferred dict
+                        inject_at[future_idx] = wm_index
+                        break
+                continue
             byte    = wm_bytes[wm_index]
             mask    = rng.randint(1, 127)
             encoded = byte ^ mask
@@ -53,8 +82,10 @@ def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
                 f"local {v}=bit32.bxor({encoded},{mask})--NG_WM_{wm_index}"
             )
             result.append(f"{v}=nil")
+            wm_placed[wm_index] = True
 
     return "\n".join(result)
+
 
 def inject_watermark(vm_source: str,
                       script_source: str,
@@ -62,6 +93,7 @@ def inject_watermark(vm_source: str,
     """Inject watermark into VM source."""
     wm = generate_watermark(user_id, script_source)
     return inject_watermark_numeric(vm_source, wm)
+
 
 def extract_watermark(vm_source: str) -> list:
     """Extract watermark bytes from obfuscated source."""
@@ -75,6 +107,7 @@ def extract_watermark(vm_source: str) -> list:
         index = int(m.group(3))
         results[index] = enc ^ mask
     return [results[i] for i in sorted(results.keys())]
+
 
 def verify_watermark(vm_source: str,
                       user_id: str,
