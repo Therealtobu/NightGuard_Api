@@ -9,24 +9,42 @@ import hmac
 import random
 import re
 
-_VERSION_SECRET = b"NightGuard_V4_2026"
+_VERSION_SECRET = b"NightGuard_V4_2025"
 
 # Lines ending with these patterns must NOT be followed by a `local` statement
 # because it would be a Lua syntax error
-_UNSAFE_AFTER = (
-    "return",   # return ... -- no local after return
-    "break",    # break -- no local after break
-    "continue", # Luau continue
+# Lines after which injecting `local` would be a syntax error
+_UNSAFE_KEYWORDS = ("return", "break", "continue")
+
+# Line endings that indicate the expression/block continues on the next line
+_UNSAFE_ENDINGS = (
+    # Arithmetic / string / comparison operators
+    "+", "-", "*", "/", "%", "^", "..", "=", "==", "~=",
+    "<", ">", "<=", ">=", "and", "or", "not",
+    # Opening brackets  (multi-line table / function call)
+    "(", "{", "[",
+    # Trailing comma (inside table or arg list)
+    ",",
+    # Block openers (next line is inside the block, not after it)
+    "then", "do", "else", "repeat",
 )
+
 
 def _safe_to_inject_after(line: str) -> bool:
     """Return True if it is safe to inject a `local` statement after this line."""
     stripped = line.strip()
     if not stripped:
         return False
-    # Check if line starts with a control flow terminator
-    for kw in _UNSAFE_AFTER:
+    # After control-flow terminators
+    for kw in _UNSAFE_KEYWORDS:
         if stripped == kw or stripped.startswith(kw + " ") or stripped.startswith(kw + "("):
+            return False
+    # After lines ending with continuation operators or block openers
+    for end in _UNSAFE_ENDINGS:
+        if stripped == end or stripped.endswith(" " + end) or stripped.endswith("\t" + end):
+            return False
+        if stripped.endswith(end) and end in ("+", "-", "*", "/", "%", "^", "..",
+                                               "(", "{", "[", ","):
             return False
     return True
 
