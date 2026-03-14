@@ -20,7 +20,9 @@ do
     local function {var_prefix}_depth()
         local d = 0
         if debug and type(debug.getinfo) == "function" then
-            while debug.getinfo(d + 1) do
+            while true do
+                local ok, info = pcall(debug.getinfo, d + 1)
+                if not ok or info == nil then break end
                 d = d + 1
                 if d > 64 then break end
             end
