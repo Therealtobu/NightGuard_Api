@@ -34,6 +34,7 @@ class _Ctx:
         self.regs=_Regs()
         self._scopes=[{}]   # stack of {name->reg}
         self._breaks=[[]]   # patch lists for break
+        self.captures={}    # name -> parent register index
 
     # ── Scope ─────────────────────────────────────────────────────────────────
     def push_scope(self): self._scopes.append({})
@@ -122,6 +123,10 @@ class _Ctx:
         if reg is not None:
             if dest is not None and dest!=reg: self.abc('MOVE',dest,reg); return dest
             return reg
+        if self.parent is not None:
+            preg=self.parent.resolve(n.id)
+            if preg is not None:
+                self.captures[n.id]=preg
         r=self._alloc(dest); k=self.proto.add_const(n.id); self.bx('GETGLOBAL',r,k); return r
 
     def _e_Field(self,n,dest):
@@ -335,6 +340,10 @@ class _Ctx:
             if loc is not None:
                 if loc!=src: self.abc('MOVE',loc,src)
             else:
+                if self.parent is not None:
+                    preg=self.parent.resolve(tgt.id)
+                    if preg is not None:
+                        self.captures[tgt.id]=preg
                 k=self.proto.add_const(tgt.id); self.bx('SETGLOBAL',src,k)
         elif isinstance(tgt,N.Field):
             obj=self.expr(tgt.value)
@@ -446,18 +455,64 @@ class _Ctx:
         base=self.regs.top
         # R[base]=iter, R[base+1]=state, R[base+2]=ctrl
         iters=n.iter
-        for i in range(3):
-            r=self.regs.alloc()
-            if i<len(iters): self.expr(iters[i],r)
-            else: self.abc('LOADNIL',r,r)
+
+        # Preserve full vararg list for common pattern: ipairs({...})
+        # by rewriting to ipairs(__NG_VARARG__), where VM seeds __NG_VARARG__
+        # in the function environment for each _exec frame.
+        if (
+            len(iters) == 1 and isinstance(iters[0], N.Call)
+            and isinstance(iters[0].func, N.Name) and iters[0].func.id == 'ipairs'
+            and len(iters[0].args) == 1
+            and isinstance(iters[0].args[0], N.Table)
+            and len(iters[0].args[0].fields) == 1
+            and isinstance(iters[0].args[0].fields[0], N.Vararg)
+        ):
+            iters = [N.Call(N.Name('ipairs'), [N.Name('__NG_VARARG__')])]
+
+        if len(iters) == 1 and isinstance(iters[0], N.Call):
+            call = iters[0]
+            fnr = self.regs.alloc()  # == base
+            self.expr(call.func, fnr)
+            for a in call.args:
+                ar = self.regs.alloc()
+                self.expr(a, ar)
+            self.abc('CALL', fnr, len(call.args) + 1, 4)  # iter,state,ctrl
+            self.regs.free_to(base + 3)
+        else:
+            for i in range(3):
+                r = self.regs.alloc()
+                if i < len(iters):
+                    self.expr(iters[i], r)
+                else:
+                    self.abc('LOADNIL', r, r)
+
         self.push_scope()
         tbase=self.regs.top
         for t in n.targets:
             r=self.regs.alloc(); self._scopes[-1][t.id]=r
+
+        # Temp call frame for generic-for iterator invocations
+        cbase=self.regs.top
+        self.regs.alloc()  # cbase: fn
+        self.regs.alloc()  # cbase+1: state
+        self.regs.alloc()  # cbase+2: ctrl
+
         loop_top=self.pc()
-        self.abc('TFORLOOP',base,0,len(n.targets))
+        self.abc('MOVE', cbase,   base)
+        self.abc('MOVE', cbase+1, base+1)
+        self.abc('MOVE', cbase+2, base+2)
+        self.abc('CALL', cbase, 3, len(n.targets)+1)
+
+        # If first iterator result is nil => exit loop
+        self.abc('TEST', cbase, 0, 0)
         j_exit=self.jmp(0)
-        self.abc('MOVE',base+2,tbase)  # update control var
+
+        for i,_ in enumerate(n.targets):
+            self.abc('MOVE', tbase+i, cbase+i)
+
+        # Update control variable to first result
+        self.abc('MOVE', base+2, cbase)
+
         self._breaks.append([])
         self.compile_block(n.body)
         self.sbx('JMP',0,loop_top-self.pc()-1)
@@ -508,6 +563,7 @@ class _Ctx:
         ctx.compile_block(body)
         p.emit(self.op.mk('RETURN',0,1))
         p.maxreg=ctx.regs.maxused
+        p.captures=[(n,int(r)) for n,r in sorted(ctx.captures.items())]
         _inject_junk(p,self.op,self.rng)
         return p
 

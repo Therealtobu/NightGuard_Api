@@ -75,10 +75,12 @@ def is_rk(x):  return bool(x&RK_BIT)
 def rk(k):     return k|RK_BIT   # encode const index as RK
 
 class Opcodes:
-    def __init__(self,seed=None):
+    def __init__(self,seed=None, shuffle=True):
         rng=random.Random(seed)
         names=[d[0] for d in _DEFS]
-        ids=list(range(len(names))); rng.shuffle(ids)
+        ids=list(range(len(names)))
+        if shuffle:
+            rng.shuffle(ids)
         self._n2i={n:ids[i] for i,n in enumerate(names)}
         self._i2n={ids[i]:n for i,n in enumerate(names)}
         self._i2f={ids[i]:_DEFS[i][1] for i in range(len(names))}

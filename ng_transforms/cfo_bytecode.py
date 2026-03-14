@@ -55,21 +55,27 @@ class BytecodeCFO:
     
     def inject_dead_code(self, code: List[int]) -> List[int]:
         """
-        Inject dead instructions into code array.
-        Returns new code array with injected instructions.
-        Also returns a mapping: new_index -> original_index (for jump fixup).
+        Inject dead operations into a numeric stream.
+
+        - Instruction stream (u32 words): insert dead u32 instructions.
+        - Byte stream (0..255): keep stream intact (CFO metadata-only mode),
+          because inserting/remapping raw compressed bytes would corrupt payload.
         """
+        # Byte-stream mode used by V4 encrypted blob pipeline.
+        if code and all(0 <= v <= 255 for v in code):
+            return list(code), {i: i for i in range(len(code))}
+
         result = []
         index_map = {}  # original_index -> new_index
-        
+
         for i, ins in enumerate(code):
             index_map[i] = len(result)
             result.append(ins)
-            
+
             # Inject dead instruction every N real instructions
             if (i + 1) % self.inject_rate == 0:
                 result.append(self._make_dead_ins())
-        
+
         return result, index_map
     
     def inject_opaque_predicates(self, code: List[int],

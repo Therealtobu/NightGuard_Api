@@ -51,6 +51,13 @@ def serialize_proto(proto)->bytes:
                 for o in order: out+=_p32(o)
         else:
             out+=_p8(3); out+=_pstr(str(c))
+    # closure captures (name + parent register index)
+    caps=getattr(proto,'captures',[]) or []
+    out+=_p32(len(caps))
+    for nm,rg in caps:
+        out+=_pstr(str(nm))
+        out+=_p8(int(rg)&0xFF)
+
     # nested protos (length-prefixed blobs)
     out+=_p32(len(proto.protos))
     for child in proto.protos:

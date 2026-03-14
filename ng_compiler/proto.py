@@ -11,6 +11,7 @@ class Proto:
         self.is_vararg= False
         self.maxreg   = 0    # max register used (set after compile)
         self.name     = '?'
+        self.captures = []  # list[(name:str, reg:int)]
 
     # ── Emit ──────────────────────────────────────────────────────────────────
     def emit(self,instr:int)->int:
