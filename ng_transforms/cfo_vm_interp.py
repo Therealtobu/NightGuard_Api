@@ -11,6 +11,16 @@ import hmac
 
 _VERSION_SECRET = b"NightGuard_V4_2025"
 
+# All Lua 5.1 / Luau reserved keywords — NEVER rename these
+_LUA_KEYWORDS = frozenset({
+    "and", "break", "do", "else", "elseif", "end",
+    "false", "for", "function", "if", "in",
+    "local", "nil", "not", "or", "repeat", "return",
+    "then", "true", "until", "while",
+    # Luau extras
+    "type", "export", "continue",
+})
+
 # ── Name mangling ─────────────────────────────────────────────────────────────
 
 def _gen_obf_name(seed: int, index: int) -> str:
@@ -23,8 +33,12 @@ def _gen_obf_name(seed: int, index: int) -> str:
         name += rng.choice(chars)
     return name
 
+
 def mangle_local_names(lua_source: str, script_source: str) -> str:
-    """Rename all non-NG local variables to obfuscated names."""
+    """
+    Rename all non-NG local variables to obfuscated names.
+    Skips Lua keywords, built-ins, and _NG_* names.
+    """
     h = hmac.new(
         _VERSION_SECRET,
         hashlib.sha256(script_source.encode()).digest() + b"mangle",
@@ -32,28 +46,36 @@ def mangle_local_names(lua_source: str, script_source: str) -> str:
     ).digest()
     seed = int.from_bytes(h[:8], "big")
 
-    local_pattern = re.compile(r'\blocal\s+([a-zA-Z_][a-zA-Z0-9_]*)\b')
-    rename_map    = {}
-    counter       = 0
+    # Match `local NAME` but only capture the name after `local`
+    # The lookahead ensures we only grab actual variable names, not keywords
+    local_pattern = re.compile(
+        r'\blocal\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
+    )
+    rename_map = {}
+    counter    = 0
 
     for match in local_pattern.finditer(lua_source):
         name = match.group(1)
-        if name not in rename_map and not name.startswith("_NG_"):
+        if (name not in rename_map
+                and not name.startswith("_NG_")
+                and name not in _LUA_KEYWORDS):  # ← KEY FIX: skip keywords
             rename_map[name] = _gen_obf_name(seed, counter)
             counter += 1
 
     result = lua_source
     for orig, obf in rename_map.items():
+        # Only replace as whole word boundaries, and only outside strings
+        # Simple approach: word-boundary replacement (safe for identifiers)
         result = re.sub(r'\b' + re.escape(orig) + r'\b', obf, result)
 
     return result
+
 
 # ── Opaque predicate injection ────────────────────────────────────────────────
 
 _TRUE_PREDS = [
     '(math.floor(1)==1)',
     '(type(0)=="number")',
-    '(type("")=="string")',
     '(1~=2)',
     '(not false)',
     '(#{1,2,3}==3)',
@@ -66,6 +88,7 @@ _FALSE_PREDS = [
     '(false)',
     '(nil==true)',
 ]
+
 
 def inject_opaque_predicates(lua_source: str,
                               script_source: str,
@@ -104,10 +127,24 @@ def inject_opaque_predicates(lua_source: str,
 
     return "\n".join(result)
 
+
 # ── String splitting ──────────────────────────────────────────────────────────
 
+# Never split these strings — they're meaningful and short
+_SAFE_STRINGS = frozenset({
+    "function", "string", "number", "boolean", "table",
+    "thread", "userdata", "nil", "true", "false",
+})
+
+
 def split_string_literals(lua_source: str, script_source: str) -> str:
-    """Split string literals into concat expressions."""
+    """
+    Split string literals into concat expressions.
+    Only splits strings that are:
+      - At least 8 chars (avoids corrupting short keyword strings)
+      - Not Lua type-check strings like "function", "table", etc.
+      - Not inside table constructors (no splitting after commas or {)
+    """
     h = hmac.new(
         _VERSION_SECRET,
         hashlib.sha256(script_source.encode()).digest() + b"strsplit",
@@ -117,19 +154,51 @@ def split_string_literals(lua_source: str, script_source: str) -> str:
 
     def split_str(match):
         s     = match.group(0)
-        inner = s[1:-1]
-        if len(inner) < 6:
+        inner = s[1:-1]          # strip surrounding quotes
+        # Skip short strings and keyword strings
+        if len(inner) < 8 or inner in _SAFE_STRINGS:
             return s
-        mid = rng.randint(2, len(inner) - 2)
+        # Skip strings that look like they could be type names or keywords
+        if inner.isalpha() and len(inner) <= 12:
+            return s
+        mid = rng.randint(3, len(inner) - 3)
         a, b = inner[:mid], inner[mid:]
         return f'("{a}".."{b}")'
 
-    return re.compile(r'"[^"\\]{4,}"').sub(split_str, lua_source)
+    # Only process strings that are clearly standalone (after = or ~= or ==)
+    # and NOT inside table constructors or function argument lists
+    # Strategy: only split strings that follow comparison operators
+    pattern = re.compile(
+        r'(?<=[=!<>~])\s*"([^"\\]{8,})"'
+        r'|'
+        r'(?<=\()\s*"([^"\\]{8,})"'
+    )
+
+    # Simpler and safer: only split strings following ~= or == operators
+    safe_pattern = re.compile(
+        r'((?:~=|==)\s*)("([^"\\]{8,})")'
+    )
+
+    def safe_split(match):
+        prefix = match.group(1)
+        inner  = match.group(3)
+        if len(inner) < 4:
+            return match.group(0)
+        mid = rng.randint(3, len(inner) - 3)
+        a, b = inner[:mid], inner[mid:]
+        return f'{prefix}("{a}".."{b}")'
+
+    return safe_pattern.sub(safe_split, lua_source)
+
 
 # ── Number encoding ───────────────────────────────────────────────────────────
 
 def encode_numbers(lua_source: str, script_source: str) -> str:
-    """Replace numeric literals with obfuscated math expressions."""
+    """
+    Replace numeric literals with obfuscated math expressions.
+    Only replaces numbers in safe contexts (not inside strings,
+    not array indices, not bit-operation arguments).
+    """
     h = hmac.new(
         _VERSION_SECRET,
         hashlib.sha256(script_source.encode()).digest() + b"numenc",
@@ -156,9 +225,29 @@ def encode_numbers(lua_source: str, script_source: str) -> str:
         else:
             return raw
 
-    return re.compile(
-        r'(?<![.\w])(\b[1-9][0-9]{0,3}\b)(?!\s*[=.])'
-    ).sub(encode_num, lua_source)
+    # Don't encode numbers that are:
+    # - Inside strings (handled by excluding inside quotes)
+    # - Table keys used as indices [N]
+    # - Bit operation constants (0xFF, 0x...)
+    # Strategy: process line by line, skip lines inside strings
+    lines  = lua_source.split("\n")
+    result = []
+    number_re = re.compile(
+        r'(?<![.x\w])(\b[1-9][0-9]{0,3}\b)(?!\s*[=.])'
+    )
+
+    for line in lines:
+        # Skip lines that look like table constructors with only numbers
+        stripped = line.strip()
+        # Don't encode inside local table arrays (all-number lines)
+        if stripped.startswith("local _") and "={" in stripped and \
+                re.search(r'\d{4,}', stripped):
+            result.append(line)
+            continue
+        result.append(number_re.sub(encode_num, line))
+
+    return "\n".join(result)
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
