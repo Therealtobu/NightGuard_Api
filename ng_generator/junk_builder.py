@@ -13,7 +13,7 @@ _VERSION_SECRET = b"NightGuard_V4_2025"
 _JUNK_TEMPLATES = [
     # Template 0: useless math
     """local {v1} = ({seed1} * {seed2} + {seed3}) % {mod1}
-local {v2} = {v1} ~ 0 and {v1} or {seed4}
+local {v2} = bit32.bxor({v1},0)~=0 and {v1} or {seed4}
 {v1} = ({v1} + {v2}) % {mod2}""",
 
     # Template 1: dead conditional
