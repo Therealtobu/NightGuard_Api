@@ -9,7 +9,7 @@ import hmac
 import random
 import re
 
-_VERSION_SECRET = b"NightGuard_V4_2026"
+_VERSION_SECRET = b"NightGuard_V4_2025"
 
 def generate_watermark(user_id: str, script_source: str) -> bytes:
     """Generate unique 16-byte watermark for user + script."""
@@ -23,7 +23,7 @@ def generate_watermark(user_id: str, script_source: str) -> bytes:
 def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
     """
     Inject watermark as arithmetic junk locals hidden in VM source.
-    Each watermark byte stored as: local _NG_wmXXXXX = (enc) ~ (mask)
+    Each watermark byte stored as: local _NG_wmXXXXX = bit32.bxor(enc,mask)
     Injects every N lines regardless of blank lines (survives obfuscation).
     """
     rng      = random.Random(int.from_bytes(wm[:8], "big"))
@@ -50,7 +50,7 @@ def inject_watermark_numeric(vm_source: str, wm: bytes) -> str:
             encoded = byte ^ mask
             v       = "_NG_wm" + str(rng.randint(10000, 99999))
             result.append(
-                f"local {v}=({encoded})~({mask})--NG_WM_{wm_index}"
+                f"local {v}=bit32.bxor({encoded},{mask})--NG_WM_{wm_index}"
             )
             result.append(f"{v}=nil")
 
@@ -66,7 +66,7 @@ def inject_watermark(vm_source: str,
 def extract_watermark(vm_source: str) -> list:
     """Extract watermark bytes from obfuscated source."""
     pattern = re.compile(
-        r'local _NG_wm\d+=\((\d+)\)~\((\d+)\)--NG_WM_(\d+)'
+        r'local _NG_wm\d+=bit32\.bxor\((\d+),(\d+)\)--NG_WM_(\d+)'
     )
     results = {}
     for m in pattern.finditer(vm_source):
