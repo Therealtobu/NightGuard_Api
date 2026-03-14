@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from ng_transforms.cfo_vm_interp  import obfuscate_vm_source
 from ng_antitamper.watermark      import inject_watermark
-from ng_generator.lua_minifier    import minify
+from ng_generator.lua_minifier    import minify, minify_and_fix
 
 
 def obfuscate_pipeline_output(vm_source: str,
@@ -22,7 +22,7 @@ def obfuscate_pipeline_output(vm_source: str,
     passes: 1-3  (more = stronger but larger output)
     Minifies after every pass so no comment/whitespace leaks through.
     """
-    result = minify(vm_source)
+    result = minify_and_fix(vm_source)
 
     # Pass 1: opaques + strings + numbers (no mangle yet)
     result = obfuscate_vm_source(
@@ -30,7 +30,7 @@ def obfuscate_pipeline_output(vm_source: str,
         mangle=False, opaques=True,
         strings=True, numbers=True
     )
-    result = minify(result)
+    result = minify_and_fix(result)
 
     # Pass 2: extra opaques
     if passes >= 2:
@@ -39,7 +39,7 @@ def obfuscate_pipeline_output(vm_source: str,
             mangle=False, opaques=True,
             strings=False, numbers=False
         )
-        result = minify(result)
+        result = minify_and_fix(result)
 
     # Pass 3: extra numbers
     if passes >= 3:
@@ -48,7 +48,7 @@ def obfuscate_pipeline_output(vm_source: str,
             mangle=False, opaques=False,
             strings=False, numbers=True
         )
-        result = minify(result)
+        result = minify_and_fix(result)
 
     # Final: mangle names (always last)
     result = obfuscate_vm_source(
@@ -56,11 +56,11 @@ def obfuscate_pipeline_output(vm_source: str,
         mangle=True, opaques=False,
         strings=False, numbers=False
     )
-    result = minify(result)
+    result = minify_and_fix(result)
 
     # Inject watermark then strip again (watermark adds numeric lines, safe)
     result = inject_watermark(result, script_source, user_id)
-    result = minify(result)
+    result = minify_and_fix(result)
 
     return result
 
