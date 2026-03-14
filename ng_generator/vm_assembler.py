@@ -30,7 +30,7 @@ from ng_crypto.key_schedule import (
 )
 from ng_crypto.compression import LUA_DECOMPRESSOR
 from ng_antitamper.linecheck import inject_linechecks
-from ng_generator.lua_minifier import minify
+from ng_generator.lua_minifier import minify_and_fix as minify
 
 TEMPLATES_DIR = os.path.join(
     os.path.dirname(__file__), "..", "vm", "v4", "templates"
